@@ -819,7 +819,13 @@ function drwDetail(d) {
       </div>`).join('')}
   </div>
   ${d.comentarios ? `<hr class="divider"><div style="font-size:11px;font-weight:700;color:var(--muted);margin-bottom:6px">COMENTARIOS</div>
-    <div style="font-size:13px;color:var(--muted)">${escHtml(d.comentarios)}</div>` : ''}`;
+    <div style="font-size:13px;color:var(--muted)">${escHtml(d.comentarios)}</div>` : ''}
+  ${currentProfile?.rol === 'admin' ? `
+  <hr class="divider">
+  <button onclick="deleteDevice('${d.id}','${escHtml(d.numero_linea)}')"
+    class="btn" style="width:100%;justify-content:center;background:#FEE2E2;color:#DC2626;border:1px solid #FECACA;margin-top:4px">
+    🗑 Eliminar dispositivo
+  </button>` : ''}`;
 }
 
 function drwEdit(d) {
@@ -1315,6 +1321,17 @@ async function inviteUser() {
 async function updateRol(userId, rol) {
   await sb.from('profiles').update({ rol }).eq('id', userId);
   showToast('Rol actualizado', 'success');
+}
+
+// ── ELIMINAR DISPOSITIVO ─────────────────────────────────────────────────────
+async function deleteDevice(id, linea) {
+  if (!confirm(`¿Eliminar definitivamente la línea ${linea}?\nEsta acción no se puede deshacer.`)) return;
+  const { error } = await sb.from('devices').delete().eq('id', id);
+  if (error) { toast('Error al eliminar: ' + error.message, 'error'); return; }
+  toast(`Línea ${linea} eliminada`, 'success');
+  closeDrawer();
+  await reloadData();
+  render();
 }
 
 // ── HELPERS DE FORM ──────────────────────────────────────────────────────────
