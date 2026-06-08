@@ -351,7 +351,7 @@ function hideLogin() {
 const S = {
   page: 'dashboard', devices: [], movements: [], cityCoords: {}, heartbeats: {},
   loading: true, regionFilter: 'Todos', estadoFilter: 'Todos', search: '',
-  selected: null, drawerTab: 'detail', leafMap: null
+  selected: null, drawerTab: 'detail', leafMap: null, invMode: 'todos'
 };
 
 const ESTADOS = {
@@ -449,14 +449,20 @@ function renderDash(body) {
   const now = Date.now();
   const conSenalHoy = d.filter(x => { const h = S.heartbeats[x.id]; return h && (now - new Date(h.created_at)) < 86400000; }).length;
   const sinSenal = activos - conSenalHoy;
+  const incompletos = d.filter(x => incompleteFields(x).length > 0).length;
 
   body.innerHTML = `
-  <div class="kpi-grid">
+  <div class="kpi-grid" style="grid-template-columns:repeat(6,1fr)">
     ${kpi(total, 'Total líneas', '#60A5FA')}
     ${kpi(activos, 'Activos', '#22C55E')}
     ${kpi(conSenalHoy, 'Con señal hoy', '#22C55E')}
     ${kpi(sinSenal, 'Sin señal hoy', sinSenal > 0 ? '#EF4444' : null)}
     ${kpi(enRep, 'En reparación', enRep > 0 ? '#F59E0B' : null)}
+    <div class="kpi-card" style="cursor:pointer;border:${incompletos>0?'1px solid #FCA5A5':''}" onclick="navigate('inventario');S.invMode='incompletos';render()">
+      <div class="kpi-val" style="${incompletos>0?'color:#EF4444':''}">${incompletos}</div>
+      <div class="kpi-lbl">Datos incompletos</div>
+      ${incompletos>0?'<div style="font-size:10px;color:#EF4444;margin-top:4px">Ver detalle →</div>':''}
+    </div>
   </div>
 
   <div class="tabs">
@@ -520,8 +526,30 @@ function renderDash(body) {
 }
 
 // ── INVENTARIO ───────────────────────────────────────────────────────────────
+const CAMPOS_REQUERIDOS = [
+  ['imei',            'IMEI'],
+  ['modelo',          'Modelo/Marca'],
+  ['plan',            'Plan'],
+  ['carga_datos',     'Carga de datos'],
+  ['responsable',     'Responsable'],
+  ['dni_responsable', 'DNI responsable'],
+  ['area',            'Área'],
+  ['region',          'Región'],
+  ['ciudad',          'Ciudad'],
+];
+
+function incompleteFields(x) {
+  return CAMPOS_REQUERIDOS.filter(([k]) => !x[k]?.trim()).map(([,label]) => label);
+}
+
+function setInvMode(m) { S.invMode = m; render(); }
+
 function renderInv(body) {
+  const incompletos = S.devices.filter(x => incompleteFields(x).length > 0);
+
   let d = [...S.devices];
+  if (S.invMode === 'incompletos') d = incompletos;
+
   if (S.search) {
     const q = S.search.toLowerCase();
     d = d.filter(x => ['numero_linea','responsable','region','ciudad','imei','modelo','area']
@@ -533,25 +561,52 @@ function renderInv(body) {
   const regs = ['Todos', ...new Set(S.devices.map(x => x.region).filter(Boolean))].sort((a,b)=>a==='Todos'?-1:a.localeCompare(b));
 
   body.innerHTML = `
+  <div style="display:flex;gap:8px;margin-bottom:16px">
+    <button class="tab ${S.invMode==='todos'?'active':''}" onclick="setInvMode('todos')">Todos (${S.devices.length})</button>
+    <button class="tab ${S.invMode==='incompletos'?'active':''}" onclick="setInvMode('incompletos')" style="${incompletos.length>0?'color:#EF4444':''}" >
+      ⚠ Datos incompletos (${incompletos.length})
+    </button>
+  </div>
+
   <div class="tbl-wrap">
     <div class="tbl-hdr">
       <div class="search-wrap">
         <span class="search-ic">🔍</span>
         <input class="search-inp" type="text" placeholder="Buscar línea, responsable, IMEI…" value="${escHtml(S.search)}" oninput="setSearch(this.value)">
       </div>
+      ${S.invMode === 'todos' ? `
       <select class="select-sm" onchange="setReg(this.value)">
         ${regs.map(r=>`<option value="${r}" ${S.regionFilter===r?'selected':''}>${r}</option>`).join('')}
       </select>
       <select class="select-sm" onchange="setEst(this.value)">
         <option value="Todos">Todos los estados</option>
         ${Object.entries(ESTADOS).map(([k,v])=>`<option value="${k}" ${S.estadoFilter===k?'selected':''}>${v.label}</option>`).join('')}
-      </select>
+      </select>` : ''}
       <div style="display:flex;gap:8px;align-items:center;margin-left:auto">
         <span class="text-muted" style="font-size:12px">${d.length} resultado(s)</span>
         <button class="btn btn-secondary" onclick="downloadTemplate()" style="font-size:12px;padding:6px 12px" title="Descargar template CSV para carga masiva">⬇ Template CSV</button>
         ${currentProfile?.rol === 'admin' ? `<label class="btn btn-secondary" style="font-size:12px;padding:6px 12px;cursor:pointer" title="Importar dispositivos desde CSV">📤 Importar CSV<input type="file" accept=".csv" onchange="importCSV(this)" style="display:none"></label>` : ''}
       </div>
     </div>
+
+    ${S.invMode === 'incompletos' ? `
+    <table>
+      <thead><tr><th>Línea</th><th>Modelo</th><th>Responsable</th><th>Región</th><th>Campos faltantes</th></tr></thead>
+      <tbody>
+        ${d.length === 0
+          ? '<tr><td colspan="5" class="no-data">Todos los dispositivos están completos ✅</td></tr>'
+          : d.map(x => {
+              const faltantes = incompleteFields(x);
+              return `<tr onclick="openDrawer('${x.id}')">
+                <td class="fw6">${x.numero_linea}</td>
+                <td class="text-muted">${x.modelo||'—'}</td>
+                <td>${x.responsable||'<span class="text-danger">Sin asignar</span>'}</td>
+                <td>${x.region||'—'}</td>
+                <td>${faltantes.map(f=>`<span class="badge bg-red" style="margin:1px 2px;font-size:10px">${f}</span>`).join('')}</td>
+              </tr>`;
+            }).join('')}
+      </tbody>
+    </table>` : `
     <table>
       <thead><tr><th>Línea</th><th>Modelo</th><th>Responsable</th><th>Área</th><th>Región</th><th>Ciudad</th><th>Estado</th></tr></thead>
       <tbody>
@@ -568,7 +623,7 @@ function renderInv(body) {
               <td>${badgeEstado(x.estado)}</td>
             </tr>`).join('')}
       </tbody>
-    </table>
+    </table>`}
   </div>`;
 }
 
@@ -1277,9 +1332,10 @@ function onPlanChange(planId, datosId) {
 
 // ── TEMPLATE CSV + IMPORTACIÓN MASIVA ────────────────────────────────────────
 function downloadTemplate() {
-  const cols = ['numero_linea','imei','modelo','plan','carga_datos','costo_linea','responsable','dni_responsable','area','region','ciudad','estado','comentarios'];
-  const ejemplo = ['2612052273','352031112409031','Samsung Galaxy A10','CC10R','2GB','0','JUAN PEREZ','12345678','DD','CUYO','MENDOZA','activo','Observaciones'];
-  const csv = [cols.join(','), ejemplo.join(',')].join('\n');
+  const cols    = ['numero_linea','imei','marca','modelo','plan','carga_datos','responsable','dni_responsable','area','region','ciudad','estado','comentarios'];
+  const refs    = ['REQUERIDO','','SAMSUNG|LG|MOTOROLA|APPLE|XIAOMI','ej: Galaxy A10','CC10R|CC11R|CC12R|CC13C','2GB|4GB|7GB|10GB (auto con plan)','','','ADM|HR|DD|DATOS|SELECCION|DIRECCION','CABA|GBA|BUENOS AIRES|CENTRO|CUYO|LITORAL|NEA|NOA|PATAGONIA|OPERACIONES','ej: MENDOZA','activo|stock|en_reparacion|baja',''];
+  const ejemplo = ['2612052273','352031112409031','SAMSUNG','Galaxy A10','CC10R','2GB','JUAN PEREZ','12345678','DD','CUYO','MENDOZA','activo',''];
+  const csv = [cols.join(','), refs.join(','), ejemplo.join(',')].join('\n');
   const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' });
   const a = Object.assign(document.createElement('a'), {
     href: URL.createObjectURL(blob), download: 'template_celulares_proa.csv'
@@ -1308,9 +1364,9 @@ async function importCSV(input) {
     const obj = {
       numero_linea: row.numero_linea,
       imei: row.imei || null,
-      modelo: row.modelo || null,
+      modelo: [row.marca, row.modelo].filter(Boolean).join(' ') || null,
       plan: row.plan || null,
-      carga_datos: row.carga_datos || null,
+      carga_datos: row.carga_datos || (row.plan ? PLANES[row.plan]?.datos : null) || null,
       costo_linea: parseFloat(row.costo_linea) || null,
       responsable: row.responsable || null,
       dni_responsable: row.dni_responsable || null,
