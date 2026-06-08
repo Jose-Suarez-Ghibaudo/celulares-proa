@@ -820,6 +820,23 @@ function drwDetail(d) {
   </div>
   ${d.comentarios ? `<hr class="divider"><div style="font-size:11px;font-weight:700;color:var(--muted);margin-bottom:6px">COMENTARIOS</div>
     <div style="font-size:13px;color:var(--muted)">${escHtml(d.comentarios)}</div>` : ''}
+  <hr class="divider">
+  <div style="font-size:11px;font-weight:700;color:var(--muted);margin-bottom:8px;text-transform:uppercase;letter-spacing:.4px">Comodato</div>
+  <div style="display:flex;flex-direction:column;gap:8px">
+    <button onclick="generateComodato()" class="btn btn-secondary" style="justify-content:center">
+      📄 Generar comodato
+    </button>
+    ${d.comodato_url ? `
+    <button onclick="viewComodato()" class="btn btn-secondary" style="justify-content:center;color:#16A34A;border-color:#86EFAC">
+      ✅ Ver comodato firmado
+    </button>
+    <label class="btn btn-secondary" style="justify-content:center;cursor:pointer;font-size:12px">
+      ↻ Reemplazar firmado<input type="file" accept=".pdf" onchange="uploadComodato(this)" style="display:none">
+    </label>` : `
+    <label class="btn btn-secondary" style="justify-content:center;cursor:pointer">
+      📤 Subir comodato firmado<input type="file" accept=".pdf" onchange="uploadComodato(this)" style="display:none">
+    </label>`}
+  </div>
   ${currentProfile?.rol === 'admin' ? `
   <hr class="divider">
   <button onclick="deleteDevice('${d.id}','${escHtml(d.numero_linea)}')"
@@ -1321,6 +1338,79 @@ async function inviteUser() {
 async function updateRol(userId, rol) {
   await sb.from('profiles').update({ rol }).eq('id', userId);
   showToast('Rol actualizado', 'success');
+}
+
+// ── COMODATO ─────────────────────────────────────────────────────────────────
+function generateComodato() {
+  const d = S.selected; if (!d) return;
+  const anio = new Date().getFullYear();
+  const html = `<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8">
+  <style>
+    body{font-family:Arial,sans-serif;font-size:11pt;margin:2cm;color:#000;line-height:1.5}
+    h1{text-align:center;font-size:14pt;margin-bottom:24px;text-transform:uppercase;letter-spacing:1px}
+    h2{text-align:center;font-size:13pt;margin:30px 0 16px}
+    p{margin:8px 0;text-align:justify}
+    table{width:100%;border-collapse:collapse;margin:14px 0;font-size:10pt}
+    th,td{border:1px solid #000;padding:6px 8px;text-align:center}
+    th{background:#e8e8e8;font-weight:bold}
+    td{min-height:36px}
+    .firma-wrap{display:flex;justify-content:space-between;margin-top:50px}
+    .firma-box{width:45%;text-align:center}
+    .firma-line{border-top:1px solid #000;margin-bottom:6px;margin-top:70px}
+    @media print{body{margin:1.5cm}}
+  </style></head><body>
+  <h1>Contrato de Comodato</h1>
+  <p>Entre <strong>Proa Consulting para OSC S.A.</strong> CUIT 33714783659, con domicilio en calle Santiago Derqui 33 piso 1, CP 5000, de la ciudad de Córdoba, representada en este acto por el Sr. Luciano Emanuel Grenni, DNI 28655758 en su carácter de socio gerente, en adelante denominada la "Comodatario", por una parte, y el/la Sr./Srta. <strong>${escHtml(d.responsable||'___________')}</strong>, DNI N° <strong>${escHtml(d.dni_responsable||'___________')}</strong>, con domicilio en la ciudad de <strong>${escHtml(d.ciudad||'___________')}</strong>, en adelante llamado el/la "Comodante", por la otra, se celebra el presente Contrato de Comodato, sujeto a las siguientes cláusulas:</p>
+  <p><strong>PRIMERA:</strong> La comodante recibe los siguientes bienes muebles que se describen a continuación al Comodatario, con facultad de usarlos:</p>
+  <table><thead><tr><th>ELEMENTO</th><th>MODELO / CÓDIGO</th><th>DETALLE</th><th>FECHA DE ENTREGA AL EMPLEADO</th><th>FIRMA EMPLEADO</th></tr></thead>
+  <tbody><tr><td>${escHtml(d.modelo||'—')}</td><td>${escHtml(d.imei||'—')}</td><td>Línea: ${escHtml(d.numero_linea)}</td><td></td><td></td></tr></tbody></table>
+  <p><strong>SEGUNDA:</strong> Las cosas comodatadas son usadas, encontrándose en buen estado de conservación y funcionamiento, y las que presentan alguna particularidad, se encuentran detalladas en el punto anterior.</p>
+  <p><strong>TERCERA:</strong> El uso que deberá darse a la cosa comodatada es a los fines del desempeño de las tareas enmarcadas en el evento y aquellas que surgen por los actos relacionados a las actividades de Proa Consulting para OSC S.A., y se prohíbe darle un uso distinto, estableciéndose en este supuesto la rescisión del contrato por culpa del Comodatario, más daños y perjuicios.</p>
+  <p><strong>CUARTA:</strong> Será obligación del Comodatario restituir la cosa comodatada en el mismo buen estado y funcionamiento en que hoy la recibe, salvo el deterioro originado por el buen uso y el transcurso del tiempo, caso contrario deberá responder por los daños y perjuicios.</p>
+  <p><strong>QUINTA:</strong> La Comodante declara que la cosa comodatada es de su propiedad.</p>
+  <p><strong>SEXTA:</strong> El Comodatario no podrá retener la cosa comodatada por lo que la Comodante le deba, aunque sea por razón de expensas de la misma cosa.</p>
+  <p><strong>SÉPTIMA:</strong> El plazo de este contrato será hasta que la comodante solicite su restitución o al momento de darse por finalizada la relación laboral, lo que suceda primero.</p>
+  <p><strong>OCTAVA:</strong> La restitución deberá realizarse por el comodatario dentro del plazo máximo de 3 días hábiles.</p>
+  <p><strong>NOVENA:</strong> Las partes constituyen los siguientes domicilios especiales: a) La Comodante en calle San Jerónimo 415 piso 1, CP 5000, de la ciudad de Córdoba; b) El Comodatario en la ciudad de ${escHtml(d.ciudad||'___________')}, donde tendrán validez todas las notificaciones.</p>
+  <p><strong>DÉCIMA:</strong> Para cualquier cuestión judicial, las partes se someterán a los Tribunales de la ciudad de Córdoba. De conformidad, se firman dos ejemplares iguales, en la ciudad de ${escHtml(d.ciudad||'___________')} a los ___ días del mes de ________________ del año ${anio}.</p>
+  <div class="firma-wrap">
+    <div class="firma-box"><div class="firma-line"></div><strong>Grenni Luciano Emanuel</strong><br>DNI 28655758<br>Proa Consulting para OSC S.A.</div>
+    <div class="firma-box"><div class="firma-line"></div><strong>${escHtml(d.responsable||'___________')}</strong><br>DNI ${escHtml(d.dni_responsable||'___________')}</div>
+  </div>
+  <div style="page-break-before:always;margin-top:40px">
+    <h2>DEVOLUCIONES</h2>
+    <p><strong>APELLIDO Y NOMBRE:</strong> ${escHtml(d.responsable||'___________')}</p>
+    <table><thead><tr><th>ELEMENTO</th><th>MODELO / CÓDIGO</th><th>ESTADO MATERIAL DEVUELTO</th><th>FECHA DEVOLUCIÓN</th><th>FIRMA QUIEN RECIBE</th><th>FIRMA EMPLEADO</th></tr></thead>
+    <tbody><tr><td>${escHtml(d.modelo||'—')}</td><td>${escHtml(d.imei||'—')}</td><td></td><td></td><td></td><td></td></tr></tbody></table>
+  </div>
+  <script>window.onload=()=>{ window.print(); }</script>
+  </body></html>`;
+  const w = window.open('', '_blank');
+  w.document.write(html);
+  w.document.close();
+}
+
+async function uploadComodato(input) {
+  const d = S.selected; if (!d) return;
+  const file = input.files[0]; if (!file) return;
+  if (file.type !== 'application/pdf') { toast('Solo se aceptan PDF', 'error'); return; }
+  toast('Subiendo comodato…', 'info');
+  const path = `${d.id}/${d.numero_linea}_firmado.pdf`;
+  const { error: upErr } = await sb.storage.from('comodatos').upload(path, file, { upsert: true, contentType: 'application/pdf' });
+  if (upErr) { toast('Error al subir: ' + upErr.message, 'error'); return; }
+  const now = new Date().toISOString();
+  await sb.from('devices').update({ comodato_url: path, comodato_fecha: now }).eq('id', d.id);
+  S.selected.comodato_url = path;
+  S.selected.comodato_fecha = now;
+  toast('Comodato firmado guardado ✓', 'success');
+  renderDrawer();
+}
+
+async function viewComodato() {
+  const d = S.selected; if (!d?.comodato_url) return;
+  const { data, error } = await sb.storage.from('comodatos').createSignedUrl(d.comodato_url, 3600);
+  if (error || !data?.signedUrl) { toast('No se pudo obtener el link', 'error'); return; }
+  window.open(data.signedUrl, '_blank');
 }
 
 // ── ELIMINAR DISPOSITIVO ─────────────────────────────────────────────────────
