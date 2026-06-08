@@ -362,6 +362,15 @@ const ESTADOS = {
 };
 const TIPOS = { alta:'Alta', asignacion:'Asignación', reasignacion:'Reasignación', baja:'Baja', reparacion:'Reparación' };
 
+const PLANES = {
+  'CC10R': { label: 'Plan Control 2GB  —  CC10R', datos: '2GB' },
+  'CC11R': { label: 'Plan Control 4GB  —  CC11R', datos: '4GB' },
+  'CC12R': { label: 'Plan Control 7GB  —  CC12R', datos: '7GB' },
+  'CC13C': { label: 'Plan Libre 10GB  —  CC13C',  datos: '10GB' },
+};
+
+const REGIONES = ['CABA','GBA','BUENOS AIRES','CENTRO','CUYO','LITORAL','NEA','NOA','PATAGONIA','OPERACIONES'];
+
 // ── Load ─────────────────────────────────────────────────────────────────────
 async function loadAll() {
   const [dr, mr, cr, hr] = await Promise.all([
@@ -760,8 +769,22 @@ function drwEdit(d) {
   return `<div class="fg-grid">
     ${fg('Responsable','fi','edit-resp',d.responsable||'')}
     ${fg('DNI responsable','fi','edit-dni',d.dni_responsable||'')}
-    ${fg('Región','fi','edit-region',d.region||'')}
+    <div class="fg"><label class="fl">Región</label>
+      <select class="fs" id="edit-region">
+        <option value="">— Seleccionar región —</option>
+        ${REGIONES.map(r=>`<option value="${r}" ${d.region===r?'selected':''}>${r}</option>`).join('')}
+      </select>
+    </div>
     ${fg('Ciudad','fi','edit-ciudad',d.ciudad||'')}
+    <div class="fg"><label class="fl">Plan</label>
+      <select class="fs" id="edit-plan" onchange="onPlanChange('edit-plan','edit-datos')">
+        <option value="">— Seleccionar plan —</option>
+        ${Object.entries(PLANES).map(([k,p])=>`<option value="${k}" ${d.plan===k?'selected':''}>${p.label}</option>`).join('')}
+      </select>
+    </div>
+    <div class="fg"><label class="fl">Carga de datos</label>
+      <input class="fi" id="edit-datos" readonly value="${d.carga_datos||''}" placeholder="Se completa al elegir plan" style="background:#F8FAFC;color:var(--muted)">
+    </div>
     ${fg('Modelo','fi','edit-modelo',d.modelo||'')}
     ${fg('IMEI','fi','edit-imei',d.imei||'')}
     ${fg('Área','fi','edit-area',d.area||'')}
@@ -805,6 +828,8 @@ async function saveEdit() {
     dni_responsable: v('edit-dni'),
     region:          v('edit-region'),
     ciudad:          v('edit-ciudad'),
+    plan:            v('edit-plan') || null,
+    carga_datos:     v('edit-datos') || null,
     modelo:          v('edit-modelo'),
     imei:            v('edit-imei'),
     area:            v('edit-area'),
@@ -840,13 +865,25 @@ function openModal() {
       ${fg('Número de línea *','fi','nl-linea','','ej: 2612052273')}
       ${fg('IMEI','fi','nl-imei','','ej: 352031112409031')}
       ${fg('Modelo','fi','nl-modelo','','ej: Samsung Galaxy A10')}
-      ${fg('Plan','fi','nl-plan','','ej: CC10R')}
-      ${fg('Carga de datos','fi','nl-datos','','ej: 2GB')}
+      <div class="fg"><label class="fl">Plan</label>
+        <select class="fs" id="nl-plan" onchange="onPlanChange('nl-plan','nl-datos')">
+          <option value="">— Seleccionar plan —</option>
+          ${Object.entries(PLANES).map(([k,p])=>`<option value="${k}">${p.label}</option>`).join('')}
+        </select>
+      </div>
+      <div class="fg"><label class="fl">Carga de datos</label>
+        <input class="fi" id="nl-datos" readonly placeholder="Se completa al elegir plan" style="background:#F8FAFC;color:var(--muted)">
+      </div>
       ${fg('Costo de línea ($)','fi','nl-costo','','0', 'number')}
       ${fg('Responsable *','fi','nl-resp','')}
       ${fg('DNI responsable','fi','nl-dni','')}
       ${fg('Área','fi','nl-area','','ej: DD, TMK, HR')}
-      ${fg('Región','fi','nl-region','','ej: CUYO, NOA, LITORAL')}
+      <div class="fg"><label class="fl">Región</label>
+        <select class="fs" id="nl-region">
+          <option value="">— Seleccionar región —</option>
+          ${REGIONES.map(r=>`<option value="${r}">${r}</option>`).join('')}
+        </select>
+      </div>
       ${fg('Ciudad','fi','nl-ciudad','','ej: MENDOZA')}
       <div class="fg"><label class="fl">Estado</label>
         <select class="fs" id="nl-estado">
@@ -1198,6 +1235,13 @@ async function inviteUser() {
 async function updateRol(userId, rol) {
   await sb.from('profiles').update({ rol }).eq('id', userId);
   showToast('Rol actualizado', 'success');
+}
+
+// ── HELPERS DE FORM ──────────────────────────────────────────────────────────
+function onPlanChange(planId, datosId) {
+  const plan = document.getElementById(planId)?.value;
+  const el = document.getElementById(datosId);
+  if (el) el.value = plan ? (PLANES[plan]?.datos || '') : '';
 }
 
 // ── TEMPLATE CSV + IMPORTACIÓN MASIVA ────────────────────────────────────────
