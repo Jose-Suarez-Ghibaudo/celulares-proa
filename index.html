@@ -370,6 +370,7 @@ const PLANES = {
 };
 
 const REGIONES = ['CABA','GBA','BUENOS AIRES','CENTRO','CUYO','LITORAL','NEA','NOA','PATAGONIA','OPERACIONES'];
+const AREAS = ['ADM','HR','DD','DATOS','SELECCION','DIRECCION'];
 
 // ── Load ─────────────────────────────────────────────────────────────────────
 async function loadAll() {
@@ -787,7 +788,12 @@ function drwEdit(d) {
     </div>
     ${fg('Modelo','fi','edit-modelo',d.modelo||'')}
     ${fg('IMEI','fi','edit-imei',d.imei||'')}
-    ${fg('Área','fi','edit-area',d.area||'')}
+    <div class="fg"><label class="fl">Área</label>
+      <select class="fs" id="edit-area">
+        <option value="">— Seleccionar área —</option>
+        ${AREAS.map(a=>`<option value="${a}" ${d.area===a?'selected':''}>${a}</option>`).join('')}
+      </select>
+    </div>
     <div class="fg"><label class="fl">Estado</label>
       <select class="fs" id="edit-estado">
         ${Object.entries(ESTADOS).map(([k,v])=>`<option value="${k}" ${d.estado===k?'selected':''}>${v.label}</option>`).join('')}
@@ -877,7 +883,12 @@ function openModal() {
       ${fg('Costo de línea ($)','fi','nl-costo','','0', 'number')}
       ${fg('Responsable *','fi','nl-resp','')}
       ${fg('DNI responsable','fi','nl-dni','')}
-      ${fg('Área','fi','nl-area','','ej: DD, TMK, HR')}
+      <div class="fg"><label class="fl">Área</label>
+        <select class="fs" id="nl-area">
+          <option value="">— Seleccionar área —</option>
+          ${AREAS.map(a=>`<option value="${a}">${a}</option>`).join('')}
+        </select>
+      </div>
       <div class="fg"><label class="fl">Región</label>
         <select class="fs" id="nl-region">
           <option value="">— Seleccionar región —</option>
