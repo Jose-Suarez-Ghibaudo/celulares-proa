@@ -1375,34 +1375,63 @@ async function importCSV(input) {
     })
     .filter(r => r.numero_linea);
   if (!rows.length) { toast('Sin filas válidas (¿falta numero_linea?)', 'error'); return; }
-  toast(`Importando ${rows.length} dispositivos…`, 'info');
-  let ok = 0, err = 0;
+  toast(`Procesando ${rows.length} dispositivos…`, 'info');
+  let creados = 0, actualizados = 0, err = 0;
+
   for (const row of rows) {
-    const obj = {
-      numero_linea: row.numero_linea,
-      imei: row.imei || null,
-      modelo: [row.marca, row.modelo].filter(Boolean).join(' ') || null,
-      plan: row.plan || null,
-      carga_datos: row.carga_datos || (row.plan ? PLANES[row.plan]?.datos : null) || null,
-      costo_linea: parseFloat(row.costo_linea) || null,
-      responsable: row.responsable || null,
-      dni_responsable: row.dni_responsable || null,
-      area: row.area || null,
-      region: row.region || null,
-      ciudad: row.ciudad || null,
-      estado: ['activo','stock','en_reparacion','baja'].includes(row.estado) ? row.estado : 'activo',
-      comentarios: row.comentarios || null,
-    };
-    const { data, error } = await sb.from('devices').insert(obj).select();
-    if (error) { err++; continue; }
-    ok++;
-    await sb.from('movements').insert({
-      device_id: data[0].id, numero_linea: obj.numero_linea, tipo: 'alta',
-      responsable_nuevo: obj.responsable, region_nueva: obj.region,
-      ciudad_nueva: obj.ciudad, motivo: 'Alta por importación masiva',
-    });
+    const modelo = [row.marca, row.modelo].filter(Boolean).join(' ') || null;
+    const carga_datos = row.carga_datos || (row.plan ? PLANES[row.plan]?.datos : null) || null;
+
+    // Verificar si ya existe
+    const { data: existing } = await sb.from('devices').select('id,responsable,region,ciudad').eq('numero_linea', row.numero_linea).maybeSingle();
+
+    if (existing) {
+      // Actualizar solo campos con valor en el CSV (no pisar datos existentes)
+      const updates = {};
+      if (modelo)               updates.modelo          = modelo;
+      if (row.imei)             updates.imei            = row.imei;
+      if (row.plan)             updates.plan            = row.plan;
+      if (carga_datos)          updates.carga_datos     = carga_datos;
+      if (row.responsable)      updates.responsable     = row.responsable;
+      if (row.dni_responsable)  updates.dni_responsable = row.dni_responsable;
+      if (row.area)             updates.area            = row.area;
+      if (row.region)           updates.region          = row.region;
+      if (row.ciudad)           updates.ciudad          = row.ciudad;
+      if (row.comentarios)      updates.comentarios     = row.comentarios;
+      if (row.estado && ['activo','stock','en_reparacion','baja'].includes(row.estado))
+                                updates.estado          = row.estado;
+
+      if (Object.keys(updates).length === 0) { actualizados++; continue; }
+      const { error } = await sb.from('devices').update(updates).eq('id', existing.id);
+      if (error) { err++; continue; }
+      actualizados++;
+    } else {
+      // Crear nuevo dispositivo
+      const obj = {
+        numero_linea: row.numero_linea,
+        imei: row.imei || null, modelo,
+        plan: row.plan || null, carga_datos,
+        costo_linea: parseFloat(row.costo_linea) || null,
+        responsable: row.responsable || null,
+        dni_responsable: row.dni_responsable || null,
+        area: row.area || null, region: row.region || null,
+        ciudad: row.ciudad || null,
+        estado: ['activo','stock','en_reparacion','baja'].includes(row.estado) ? row.estado : 'activo',
+        comentarios: row.comentarios || null,
+      };
+      const { data, error } = await sb.from('devices').insert(obj).select();
+      if (error) { err++; continue; }
+      creados++;
+      await sb.from('movements').insert({
+        device_id: data[0].id, numero_linea: obj.numero_linea, tipo: 'alta',
+        responsable_nuevo: obj.responsable, region_nueva: obj.region,
+        ciudad_nueva: obj.ciudad, motivo: 'Alta por importación masiva',
+      });
+    }
   }
-  toast(`${ok} importados${err ? `, ${err} con error` : ''}`, ok > 0 ? 'success' : 'error');
+
+  const msg = [creados && `${creados} creados`, actualizados && `${actualizados} actualizados`, err && `${err} errores`].filter(Boolean).join(', ');
+  toast(msg, err > 0 && creados + actualizados === 0 ? 'error' : 'success');
   input.value = '';
   await reloadData();
   render();
