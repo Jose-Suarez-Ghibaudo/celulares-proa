@@ -1169,6 +1169,20 @@ function toast(msg, type='info') {
 }
 
 // ── SEÑALES DE VIDA ──────────────────────────────────────────────────────────
+function waLink(r) {
+  const num = '549' + r.numero_linea;
+  let msg;
+  if (r._s.hs < 24) {
+    msg = `Hola ${r.responsable||''}! Todo en orden con tu celular PROA (línea ${r.numero_linea}) 👍`;
+  } else if (r._s.hs < 72) {
+    const h = Math.round(r._s.hs);
+    msg = `Hola ${r.responsable||''}! Te contactamos desde PROA. Tu celular corporativo (línea ${r.numero_linea}) no registra señal hace ${h} horas. ¿Podés confirmar que está encendido y con datos activados? Gracias!`;
+  } else {
+    msg = `Hola ${r.responsable||''}! Te contactamos desde PROA. Tu celular corporativo (línea ${r.numero_linea}) lleva más de 3 días sin registrar señal. Por favor revisá que esté encendido, con datos activos y con la app PROA Tracker instalada. Gracias!`;
+  }
+  return `https://wa.me/${num}?text=${encodeURIComponent(msg)}`;
+}
+
 function renderSenales(body) {
   const now = Date.now();
   const activos = S.devices.filter(x => x.estado === 'activo');
@@ -1205,13 +1219,15 @@ function renderSenales(body) {
     <table>
       <thead><tr>
         <th>Estado</th><th>Línea</th><th>Responsable</th><th>Región</th>
-        <th>Última señal</th><th>Batería</th><th>Ubicación</th>
+        <th>Última señal</th><th>Batería</th><th>Ubicación</th><th></th>
       </tr></thead>
       <tbody>
-        ${rows.map(r => `
+        ${rows.map(r => {
+          const wa = waLink(r);
+          return `
           <tr onclick="openDrawer('${r.id}')">
             <td><span class="badge ${r._s.cls}">${r._s.label}</span></td>
-            <td class="fw6">${r.numero_linea}</td>
+            <td class="fw6" style="white-space:nowrap">${r.numero_linea}${r.sin_dispositivo ? ' <span title="Sin dispositivo" style="font-size:10px">📵</span>' : ''}</td>
             <td>${r.responsable || '—'}</td>
             <td>${r.region || '—'}</td>
             <td class="text-muted" style="white-space:nowrap">${r._s.h ? fmtDate(r._s.h.created_at) : 'Sin señal'}</td>
@@ -1221,7 +1237,18 @@ function renderSenales(body) {
               r._s.h.source === 'ip' ? `🌐 IP aprox.` :
               `📍 ${r._s.h.lat.toFixed(4)}, ${r._s.h.lng.toFixed(4)}`
             }</td>
-          </tr>`).join('')}
+            <td onclick="event.stopPropagation()">
+              <a href="${wa}" target="_blank" title="Enviar WhatsApp a ${escHtml(r.responsable||r.numero_linea)}"
+                style="display:inline-flex;align-items:center;justify-content:center;width:30px;height:30px;border-radius:50%;text-decoration:none;transition:transform .15s;${r._s.hs >= 24 ? 'opacity:1' : 'opacity:.45'}"
+                onmouseover="this.style.transform='scale(1.15)'" onmouseout="this.style.transform='scale(1)'">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="26" height="26">
+                  <circle cx="16" cy="16" r="16" fill="#25D366"/>
+                  <path fill="#fff" d="M22.9 9.1A9.7 9.7 0 0 0 16 6.3a9.74 9.74 0 0 0-8.43 14.6L6.3 25.7l4.93-1.29A9.74 9.74 0 0 0 25.7 16a9.7 9.7 0 0 0-2.8-6.9zm-6.9 15a8.09 8.09 0 0 1-4.12-1.13l-.3-.17-3.07.8.82-3-.19-.31A8.12 8.12 0 1 1 16 24.1zm4.45-6.07c-.24-.12-1.44-.71-1.66-.79s-.39-.12-.55.12-.63.79-.77.95-.28.18-.52.06a6.61 6.61 0 0 1-1.95-1.2 7.3 7.3 0 0 1-1.35-1.68c-.14-.24 0-.37.11-.49s.24-.28.37-.43a1.6 1.6 0 0 0 .24-.4.44.44 0 0 0-.02-.43c-.06-.12-.55-1.32-.75-1.8s-.4-.41-.55-.42h-.47a.9.9 0 0 0-.65.3 2.74 2.74 0 0 0-.85 2.04 4.76 4.76 0 0 0 1 2.52 10.9 10.9 0 0 0 4.17 3.69 14 14 0 0 0 1.39.51 3.34 3.34 0 0 0 1.53.1 2.52 2.52 0 0 0 1.65-1.16 2.04 2.04 0 0 0 .14-1.16c-.06-.1-.22-.16-.46-.28z"/>
+                </svg>
+              </a>
+            </td>
+          </tr>`;
+        }).join('')}
       </tbody>
     </table>
   </div>`;
