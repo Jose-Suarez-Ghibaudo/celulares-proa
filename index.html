@@ -389,7 +389,8 @@ function hideLogin() {
 const S = {
   page: 'dashboard', devices: [], movements: [], cityCoords: {}, heartbeats: {},
   loading: true, regionFilter: 'Todos', estadoFilter: 'Todos', search: '',
-  selected: null, drawerTab: 'detail', leafMap: null, invMode: 'todos'
+  selected: null, drawerTab: 'detail', leafMap: null, invMode: 'todos',
+  factParsed: null, facturas: [], factTab: 'todas'
 };
 
 const ESTADOS = {
@@ -1556,44 +1557,182 @@ async function deleteDevice(id, linea) {
 // ── FACTURACIÓN ──────────────────────────────────────────────────────────────
 const COSTO_ESPERADO = { CC10R: 5446, CC11R: 7220, CC12R: 9838, CC13C: 14174 };
 
-function renderFacturacion(body) {
+async function renderFacturacion(body) {
+  // Cargar historial si no está cargado
+  if (!S.facturas.length) {
+    const { data } = await sb.from('facturas_claro').select('*').order('fecha_factura', { ascending: false });
+    S.facturas = data || [];
+  }
+
+  const parsed = S.factParsed;
+
   body.innerHTML = `
-  <div style="max-width:900px">
+  <div style="max-width:960px">
+
+    ${parsed ? renderFactPreview(parsed) : ''}
+
     <div class="card" style="margin-bottom:18px">
-      <div style="font-size:13px;color:var(--muted);margin-bottom:14px">
-        Subí la factura PDF de Claro para analizar el gasto por línea y detectar excedentes.
-        Los excedentes se calculan comparando el total facturado con el costo base del plan con bonificación.
-      </div>
-      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
+        <div>
+          <div style="font-weight:700;font-size:15px;color:var(--text);margin-bottom:4px">Facturación Claro</div>
+          <div style="font-size:12px;color:var(--muted)">Subí la factura PDF para cruzar con el inventario y detectar excedentes o líneas sin registrar.</div>
+        </div>
         <label class="btn btn-primary" style="cursor:pointer;display:inline-flex;align-items:center;gap:6px">
-          📄 Subir factura Claro (PDF)
+          📄 ${parsed ? 'Cargar otra factura' : 'Subir factura Claro (PDF)'}
           <input type="file" accept=".pdf" id="fact-upload" onchange="procesarFactura(this)" style="display:none">
         </label>
-        <div id="fact-status" style="font-size:13px;color:var(--muted)"></div>
       </div>
-      <div style="margin-top:12px;padding:10px 14px;background:#F8FAFC;border-radius:8px;font-size:11px;color:var(--muted)">
-        <strong>Costos base esperados por plan (con bonificación 80% x 12 meses):</strong>
-        CC10R → $5.446 · CC11R → $7.220 · CC12R → $9.838 · CC13C → $14.174
-        <br>Si tu bonificación cambió, actualizá los montos manualmente en el código.
+      <div id="fact-status" style="font-size:12px;color:var(--muted);margin-top:8px"></div>
+    </div>
+
+    <div>
+      <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px">
+        Historial de facturas (${S.facturas.length})
+      </div>
+      ${S.facturas.length === 0
+        ? '<div class="card" style="text-align:center;padding:32px;color:var(--muted)">Aún no hay facturas guardadas. Subí la primera.</div>'
+        : `<div class="tbl-wrap"><table>
+            <thead><tr><th>Período</th><th>N° Factura</th><th>Fecha</th><th style="text-align:right">Líneas Claro</th><th style="text-align:right">En sistema</th><th style="text-align:right">Sin registrar</th><th style="text-align:right">Con excedente</th><th style="text-align:right">Total factura</th><th></th></tr></thead>
+            <tbody>
+              ${S.facturas.map(f => `
+                <tr style="cursor:pointer" onclick="verFactura('${f.id}')">
+                  <td class="fw6">${escHtml(f.periodo||'—')}</td>
+                  <td class="text-muted" style="font-size:11px">${escHtml(f.numero_factura||'—')}</td>
+                  <td class="text-muted">${f.fecha_factura ? fmtDate(f.fecha_factura) : '—'}</td>
+                  <td style="text-align:right">${f.total_lineas_claro||'—'}</td>
+                  <td style="text-align:right;color:#22C55E">${f.lineas_en_sistema||'—'}</td>
+                  <td style="text-align:right;${f.lineas_sin_registrar>0?'color:#EF4444;font-weight:700':'color:var(--muted)'}">${f.lineas_sin_registrar||0}</td>
+                  <td style="text-align:right;${f.lineas_con_exceso>0?'color:#F59E0B;font-weight:700':'color:var(--muted)'}">${f.lineas_con_exceso||0}</td>
+                  <td style="text-align:right;font-weight:600">$${(f.total_factura||0).toLocaleString('es-AR',{maximumFractionDigits:0})}</td>
+                  <td><button onclick="event.stopPropagation();eliminarFactura('${f.id}')" style="background:none;border:none;color:#EF4444;cursor:pointer;font-size:14px" title="Eliminar">✕</button></td>
+                </tr>`).join('')}
+            </tbody>
+          </table></div>`
+      }
+    </div>
+  </div>`;
+}
+
+function renderFactPreview(parsed) {
+  const { meta, lineas } = parsed;
+  const sinReg    = lineas.filter(l => !l.en_sistema);
+  const conExc    = lineas.filter(l => l.exceso > 0);
+  const enSistema = lineas.filter(l => l.en_sistema);
+
+  // Líneas activas en sistema que NO aparecen en la factura
+  const numsFact = new Set(lineas.map(l => l.numero_linea));
+  const noEnFact = S.devices.filter(d => d.estado === 'activo' && !numsFact.has(d.numero_linea));
+
+  let filtradas = lineas;
+  if (S.factTab === 'sin_registrar') filtradas = sinReg;
+  else if (S.factTab === 'excedentes') filtradas = conExc;
+  else if (S.factTab === 'no_en_factura') filtradas = noEnFact.map(d => ({ numero_linea: d.numero_linea, responsable: d.responsable, region: d.region, plan: d.plan, noEnFact: true }));
+
+  const fmt = n => '$' + n.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const totalExc = conExc.reduce((s,l) => s + l.exceso, 0);
+
+  return `
+  <div class="card" style="margin-bottom:18px;border:2px solid #C7D2FE">
+    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:14px">
+      <div>
+        <div style="font-weight:700;font-size:15px;color:var(--text)">${escHtml(meta.periodo)} — Factura ${escHtml(meta.numero_factura||'—')}</div>
+        <div style="font-size:12px;color:var(--muted)">Fecha: ${meta.fecha_factura||'—'} · Total: $${(meta.total_factura||0).toLocaleString('es-AR',{maximumFractionDigits:0})}</div>
+      </div>
+      <div style="display:flex;gap:8px">
+        <button onclick="S.factParsed=null;render()" class="btn btn-secondary" style="font-size:12px">✕ Descartar</button>
+        <button onclick="guardarFactura()" class="btn btn-primary" style="font-size:12px">💾 Guardar factura</button>
       </div>
     </div>
 
-    <div id="fact-resumen" style="display:none;margin-bottom:18px">
-      <div class="kpi-grid" style="grid-template-columns:repeat(4,1fr)">
-        <div class="kpi-card"><div class="kpi-val" id="fact-kpi-total">—</div><div class="kpi-lbl">Líneas en factura</div></div>
-        <div class="kpi-card"><div class="kpi-val" id="fact-kpi-ok" style="color:#22C55E">—</div><div class="kpi-lbl">Sin excedente</div></div>
-        <div class="kpi-card" style="border:1px solid #FCA5A5"><div class="kpi-val" id="fact-kpi-exc" style="color:#EF4444">—</div><div class="kpi-lbl">Con excedente</div></div>
-        <div class="kpi-card"><div class="kpi-val" id="fact-kpi-monto" style="color:#EF4444">—</div><div class="kpi-lbl">Total excedente $</div></div>
-      </div>
+    <div class="kpi-grid" style="grid-template-columns:repeat(5,1fr);margin-bottom:14px">
+      <div class="kpi-card"><div class="kpi-val" style="color:#60A5FA">${lineas.length}</div><div class="kpi-lbl">Líneas en Claro</div></div>
+      <div class="kpi-card"><div class="kpi-val" style="color:#22C55E">${enSistema.length}</div><div class="kpi-lbl">En sistema</div></div>
+      <div class="kpi-card" style="${sinReg.length>0?'border:1px solid #FCA5A5':''}"><div class="kpi-val" style="${sinReg.length>0?'color:#EF4444':''}">${sinReg.length}</div><div class="kpi-lbl">Sin registrar</div></div>
+      <div class="kpi-card" style="${conExc.length>0?'border:1px solid #FDE68A':''}"><div class="kpi-val" style="${conExc.length>0?'color:#D97706':''}">${conExc.length}</div><div class="kpi-lbl">Con excedente</div></div>
+      <div class="kpi-card" style="${noEnFact.length>0?'border:1px solid #DDD6FE':''}"><div class="kpi-val" style="${noEnFact.length>0?'color:#7C3AED':''}">${noEnFact.length}</div><div class="kpi-lbl">Activos no facturados</div></div>
     </div>
 
-    <div id="fact-tabla"></div>
+    ${sinReg.length > 0 ? `
+    <div style="background:#FEF2F2;border:1px solid #FECACA;border-radius:8px;padding:10px 14px;margin-bottom:12px;font-size:12px;color:#991B1B">
+      ⚠ <strong>${sinReg.length} línea(s) de Claro NO están registradas en el sistema.</strong>
+      Revisalas y agregá una explicación o dadas de alta en el inventario.
+    </div>` : ''}
+
+    ${noEnFact.length > 0 ? `
+    <div style="background:#F5F3FF;border:1px solid #DDD6FE;border-radius:8px;padding:10px 14px;margin-bottom:12px;font-size:12px;color:#4C1D95">
+      ⚠ <strong>${noEnFact.length} línea(s) activas en sistema no aparecen en esta factura.</strong>
+      Puede que hayan sido dadas de baja en Claro.
+    </div>` : ''}
+
+    <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap">
+      <button class="tab ${S.factTab==='todas'?'active':''}" onclick="S.factTab='todas';render()">Todas (${lineas.length})</button>
+      <button class="tab ${S.factTab==='sin_registrar'?'active':''}" onclick="S.factTab='sin_registrar';render()" style="${sinReg.length>0?'color:#EF4444':''}">
+        ⚠ Sin registrar (${sinReg.length})
+      </button>
+      <button class="tab ${S.factTab==='excedentes'?'active':''}" onclick="S.factTab='excedentes';render()" style="${conExc.length>0?'color:#D97706':''}">
+        💸 Excedentes (${conExc.length}) · ${fmt(totalExc)}
+      </button>
+      <button class="tab ${S.factTab==='no_en_factura'?'active':''}" onclick="S.factTab='no_en_factura';render()" style="${noEnFact.length>0?'color:#7C3AED':''}">
+        🔍 No facturadas (${noEnFact.length})
+      </button>
+    </div>
+
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr>
+          <th>Línea</th><th>Responsable / Usuario Claro</th><th>Región</th><th>Plan</th>
+          ${S.factTab !== 'no_en_factura' ? `
+          <th style="text-align:right">Plan base</th>
+          <th style="text-align:right">Bonif.</th>
+          <th style="text-align:right">Total facturado</th>
+          <th style="text-align:right">Esperado</th>
+          <th style="text-align:right">Excedente</th>` : ''}
+          ${S.factTab === 'sin_registrar' ? '<th>Explicación</th>' : ''}
+        </tr></thead>
+        <tbody>
+          ${filtradas.length === 0
+            ? `<tr><td colspan="10" class="no-data">Sin datos en este filtro</td></tr>`
+            : filtradas.map((l, idx) => {
+                if (l.noEnFact) return `
+                  <tr style="background:#F5F3FF">
+                    <td class="fw6">${escHtml(l.numero_linea)}</td>
+                    <td>${escHtml(l.responsable||'—')}</td>
+                    <td>${escHtml(l.region||'—')}</td>
+                    <td><span class="badge" style="background:#EDE9FE;color:#6D28D9">${escHtml(l.plan||'—')}</span></td>
+                    <td colspan="5" style="color:#7C3AED;font-size:12px">No aparece en esta factura — posible baja en Claro</td>
+                  </tr>`;
+                return `
+                  <tr style="${!l.en_sistema?'background:#FEF2F2':l.exceso>0?'background:#FFFBEB':''}">
+                    <td class="fw6">${escHtml(l.numero_linea)}${!l.en_sistema?' <span style="font-size:10px;color:#EF4444">●</span>':''}</td>
+                    <td style="font-size:12px">${escHtml(l.responsable||l.nombre_usuario||'—')}</td>
+                    <td style="font-size:12px">${escHtml(l.region||'—')}</td>
+                    <td><span class="badge" style="background:#EEF2FF;color:#4F46E5">${escHtml(l.plan||'—')}</span></td>
+                    ${S.factTab !== 'no_en_factura' ? `
+                    <td style="text-align:right;color:var(--muted);font-size:12px">${fmt(l.plan_precio||0)}</td>
+                    <td style="text-align:right;color:#16A34A;font-size:12px">${l.bonificacion<0?fmt(l.bonificacion):'—'}</td>
+                    <td style="text-align:right;font-weight:600;font-size:13px">${fmt(l.total_linea||0)}</td>
+                    <td style="text-align:right;color:var(--muted);font-size:12px">${fmt(l.costo_esperado||0)}</td>
+                    <td style="text-align:right;font-weight:700;color:${l.exceso>0?'#D97706':'#22C55E'};font-size:13px">
+                      ${l.exceso>0?'+'+fmt(l.exceso):'✓'}
+                    </td>` : ''}
+                    ${S.factTab === 'sin_registrar' ? `
+                    <td>
+                      <input type="text" value="${escHtml(S.factParsed.lineas[idx]?.explicacion||'')}"
+                        placeholder="Motivo (ej: línea directivo externo)"
+                        style="width:100%;padding:5px 8px;border:1px solid #E2E8F0;border-radius:6px;font-size:12px"
+                        oninput="S.factParsed.lineas.find(x=>x.numero_linea==='${escHtml(l.numero_linea)}').explicacion=this.value">
+                    </td>` : ''}
+                  </tr>`;
+              }).join('')}
+        </tbody>
+      </table>
+    </div>
   </div>`;
 }
 
 function parseArgMoney(str) {
   if (!str || str === '.') return 0;
-  return parseFloat(str.replace(/\./g, '').replace(',', '.').replace(/[$\s]/g, '')) || 0;
+  return parseFloat(str.replace(/\./g, '').replace(',', '.').replace(/[$\s]/g, '').replace('-','').trim()) || 0;
 }
 
 async function procesarFactura(input) {
@@ -1601,7 +1740,6 @@ async function procesarFactura(input) {
   const status = document.getElementById('fact-status');
   status.textContent = 'Cargando pdf.js…';
 
-  // Carga diferida de pdf.js
   if (!window.pdfjsLib) {
     await new Promise((res, rej) => {
       const s = document.createElement('script');
@@ -1625,16 +1763,47 @@ async function procesarFactura(input) {
       allText = allText.concat(content.items.map(i => i.str.trim()).filter(Boolean));
     }
 
+    const meta   = parsearMetaFactura(allText);
     const lineas = parsearLineasFactura(allText);
+
     if (!lineas.length) {
       status.textContent = '⚠ No se encontraron líneas. ¿Es una factura de Claro?';
       return;
     }
     status.textContent = `✓ ${lineas.length} líneas procesadas`;
-    mostrarResultadosFactura(lineas);
+    S.factParsed = { meta, lineas };
+    S.factTab = 'todas';
+    render();
   } catch (e) {
     status.textContent = 'Error al procesar: ' + e.message;
+    console.error(e);
   }
+}
+
+function parsearMetaFactura(items) {
+  const fullText = items.join(' ');
+  const numFact  = fullText.match(/Factura\s+N[°o]\s+([\d\-]+)/i)?.[1] || '';
+  const fechaM   = fullText.match(/Fecha de Factura\s+(\d{2}\/\d{2}\/\d{4})/i)?.[1] || '';
+  const totalF   = fullText.match(/Total Factura:\s*\$([\d.,]+)/i)?.[1] || '';
+  const nLineas  = fullText.match(/Total Lineas:\s*(\d+)/i)?.[1] || '';
+
+  let fechaISO = '';
+  let periodo = '';
+  if (fechaM) {
+    const [d, m, y] = fechaM.split('/');
+    fechaISO = `${y}-${m}-${d}`;
+    const meses = ['Enero','Febrero','Marzo','Abril','Mayo','Junio',
+                   'Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+    periodo = `${meses[parseInt(m,10)-1]} ${y}`;
+  }
+
+  return {
+    numero_factura: numFact,
+    fecha_factura:  fechaISO || fechaM,
+    periodo,
+    total_factura:  parseArgMoney(totalF),
+    total_lineas_claro: parseInt(nLineas, 10) || 0,
+  };
 }
 
 const SKIP_FACTURA = new Set([
@@ -1653,17 +1822,15 @@ function parsearLineasFactura(items) {
     'SANTIAGO DEL ESTERO','CATAMARCA','LA RIOJA','SAN JUAN','SAN LUIS','NEUQUEN',
     'RIO NEGRO','CHUBUT','SANTA CRUZ','TIERRA DEL FUEGO','LA PAMPA']);
 
-  // Filtrar ítems de encabezado repetido
   const filtered = items.filter(s => !SKIP_FACTURA.has(s));
-
   const result = [];
+
   let i = 0;
   while (i < filtered.length) {
     const item = filtered[i];
     if (!PHONE_REGEX.test(item) || item === '00820948575451') { i++; continue; }
 
     const numero = item;
-    // Siguiente bloque: nombre, plan, precio_plan, [servs...], total, provincia
     const block = [];
     let j = i + 1;
     while (j < filtered.length && !PHONE_REGEX.test(filtered[j]) && block.length < 20) {
@@ -1671,89 +1838,130 @@ function parsearLineasFactura(items) {
       j++;
     }
 
-    // Encontrar índice del plan (CC10R, CC11R, CC12R, CC13C)
     const planIdx = block.findIndex(s => PLAN_REGEX.test(s));
     if (planIdx < 0) { i = j; continue; }
 
-    const plan = block[planIdx];
+    const nombre_usuario = block.slice(0, planIdx).join(' ').trim();
+    const plan      = block[planIdx];
     const planPrecio = planIdx + 1 < block.length ? parseArgMoney(block[planIdx + 1]) : 0;
 
-    // Campos de importe: los 8 siguientes al precio del plan (servicios, bonif, llam_loc, llam_int, roaming, mensajes, datos, otros)
-    // Luego viene el total, luego provincia
     const cargos = block.slice(planIdx + 2);
-    // El total es el último campo monetario antes de la provincia
-    let total = 0;
-    let bonif = 0;
+    let total = 0, bonificacion = 0;
     for (let k = 0; k < Math.min(cargos.length, 10); k++) {
       if (MONEY_REGEX.test(cargos[k])) {
-        const val = parseArgMoney(cargos[k]);
-        if (k === 1) bonif = val; // índice 1 = bonificación (siempre negativa)
-        total = val; // el último monetario antes de provincia
+        const raw = cargos[k].replace(/[$\.]/g, '').replace(',', '.');
+        const val = parseFloat(raw) || 0;
+        if (k === 0 && val < 0) bonificacion = val;
+        else if (k === 1 && val < 0) bonificacion = val;
+        total = parseArgMoney(cargos[k]);
       } else if (PROVINCIAS.has(cargos[k]?.toUpperCase())) {
         break;
       }
     }
 
-    const esperado = COSTO_ESPERADO[plan] || Math.max(0, planPrecio + bonif);
-    const exceso = Math.max(0, total - esperado);
+    // Buscar bonif como el primer negativo en cargos
+    for (let k = 0; k < Math.min(cargos.length, 5); k++) {
+      if (MONEY_REGEX.test(cargos[k])) {
+        const raw = parseFloat(cargos[k].replace(/[$\.]/g,'').replace(',','.')) || 0;
+        if (raw < 0) { bonificacion = raw; break; }
+      }
+    }
 
-    // Buscar responsable en S.devices
-    const dev = S.devices.find(d => d.numero_linea === numero);
-    result.push({ numero, plan, planPrecio, bonif, total, esperado, exceso,
-      responsable: dev?.responsable || '—', region: dev?.region || '—',
-      enSistema: !!dev, sinDisp: dev?.sin_dispositivo });
+    const esperado   = COSTO_ESPERADO[plan] || Math.max(0, planPrecio + bonificacion);
+    const exceso     = Math.max(0, total - esperado);
+    const dev        = S.devices.find(d => d.numero_linea === numero);
+
+    result.push({
+      numero_linea: numero, nombre_usuario, plan,
+      plan_precio: planPrecio, bonificacion, total_linea: total,
+      costo_esperado: esperado, exceso,
+      en_sistema: !!dev,
+      responsable: dev?.responsable || '',
+      region: dev?.region || '',
+      explicacion: '',
+    });
     i = j;
   }
   return result;
 }
 
-function mostrarResultadosFactura(lineas) {
-  const resumen = document.getElementById('fact-resumen');
-  resumen.style.display = '';
-  const conExc = lineas.filter(l => l.exceso > 0);
-  const totalExc = conExc.reduce((s, l) => s + l.exceso, 0);
+async function guardarFactura() {
+  const { meta, lineas } = S.factParsed;
+  const numsFact = new Set(lineas.map(l => l.numero_linea));
+  const noEnFact = S.devices.filter(d => d.estado === 'activo' && !numsFact.has(d.numero_linea)).length;
 
-  document.getElementById('fact-kpi-total').textContent = lineas.length;
-  document.getElementById('fact-kpi-ok').textContent = lineas.length - conExc.length;
-  document.getElementById('fact-kpi-exc').textContent = conExc.length;
-  document.getElementById('fact-kpi-monto').textContent = '$' + totalExc.toLocaleString('es-AR', {maximumFractionDigits:0});
+  const factObj = {
+    periodo:           meta.periodo,
+    numero_factura:    meta.numero_factura,
+    fecha_factura:     meta.fecha_factura || null,
+    total_lineas_claro: meta.total_lineas_claro || lineas.length,
+    total_factura:     meta.total_factura,
+    lineas_en_sistema: lineas.filter(l => l.en_sistema).length,
+    lineas_sin_registrar: lineas.filter(l => !l.en_sistema).length,
+    lineas_con_exceso: lineas.filter(l => l.exceso > 0).length,
+    lineas_no_en_factura: noEnFact,
+    created_by: currentUser?.id || null,
+  };
 
-  // Ordenar: con exceso primero, luego por monto desc
-  const sorted = [...lineas].sort((a,b) => (b.exceso - a.exceso));
+  const { data: factData, error: factErr } = await sb.from('facturas_claro').insert(factObj).select().single();
+  if (factErr) { toast('Error al guardar: ' + factErr.message, 'error'); return; }
 
-  const fmt = n => '$' + n.toLocaleString('es-AR', {minimumFractionDigits:2, maximumFractionDigits:2});
+  const lineasRows = lineas.map(l => ({
+    factura_id:    factData.id,
+    numero_linea:  l.numero_linea,
+    nombre_usuario: l.nombre_usuario,
+    plan:          l.plan,
+    plan_precio:   l.plan_precio,
+    bonificacion:  l.bonificacion,
+    total_linea:   l.total_linea,
+    costo_esperado: l.costo_esperado,
+    exceso:        l.exceso,
+    en_sistema:    l.en_sistema,
+    explicacion:   l.explicacion || null,
+  }));
 
-  document.getElementById('fact-tabla').innerHTML = `
-  <div class="tbl-wrap">
-    <table>
-      <thead>
-        <tr>
-          <th>Línea</th><th>Responsable</th><th>Región</th><th>Plan</th>
-          <th style="text-align:right">Plan base</th>
-          <th style="text-align:right">Bonif.</th>
-          <th style="text-align:right">Total facturado</th>
-          <th style="text-align:right">Esperado</th>
-          <th style="text-align:right">Excedente</th>
-        </tr>
-      </thead>
-      <tbody>
-        ${sorted.map(l => `
-          <tr style="${l.exceso > 0 ? 'background:#FEF2F2' : ''}${!l.enSistema ? 'opacity:.6' : ''}">
-            <td class="fw6">${l.numero}${l.sinDisp ? ' <span title="Sin dispositivo" style="font-size:10px">📵</span>' : ''}${!l.enSistema ? ' <span style="font-size:10px;color:var(--muted)">(no registrada)</span>' : ''}</td>
-            <td>${escHtml(l.responsable)}</td>
-            <td>${escHtml(l.region)}</td>
-            <td><span class="badge" style="background:#EEF2FF;color:#4F46E5">${l.plan}</span></td>
-            <td style="text-align:right;color:var(--muted)">${fmt(l.planPrecio)}</td>
-            <td style="text-align:right;color:#16A34A">${l.bonif < 0 ? fmt(l.bonif) : '—'}</td>
-            <td style="text-align:right;font-weight:600">${fmt(l.total)}</td>
-            <td style="text-align:right;color:var(--muted)">${fmt(l.esperado)}</td>
-            <td style="text-align:right;font-weight:700;color:${l.exceso > 0 ? '#EF4444' : '#22C55E'}">
-              ${l.exceso > 0 ? '+' + fmt(l.exceso) : '✓'}
-            </td>
-          </tr>`).join('')}
-      </tbody>
-    </table>
-  </div>`;
+  const { error: linErr } = await sb.from('factura_lineas').insert(lineasRows);
+  if (linErr) { toast('Error al guardar líneas: ' + linErr.message, 'error'); return; }
+
+  toast(`Factura ${meta.periodo} guardada ✓`, 'success');
+  S.factParsed = null;
+  S.facturas = [];
+  render();
+}
+
+async function verFactura(facturaId) {
+  const { data: lineas } = await sb.from('factura_lineas').select('*').eq('factura_id', facturaId).order('exceso', { ascending: false });
+  const factura = S.facturas.find(f => f.id === facturaId);
+  if (!factura || !lineas) return;
+
+  const lineasMapped = lineas.map(l => ({
+    ...l,
+    responsable: S.devices.find(d => d.numero_linea === l.numero_linea)?.responsable || l.nombre_usuario || '',
+    region: S.devices.find(d => d.numero_linea === l.numero_linea)?.region || '',
+  }));
+
+  S.factParsed = {
+    meta: {
+      periodo: factura.periodo,
+      numero_factura: factura.numero_factura,
+      fecha_factura: factura.fecha_factura,
+      total_factura: factura.total_factura,
+      total_lineas_claro: factura.total_lineas_claro,
+    },
+    lineas: lineasMapped,
+    guardada: true,
+    facturaId,
+  };
+  S.factTab = 'todas';
+  render();
+}
+
+async function eliminarFactura(id) {
+  if (!confirm('¿Eliminar esta factura del historial?')) return;
+  await sb.from('facturas_claro').delete().eq('id', id);
+  S.facturas = S.facturas.filter(f => f.id !== id);
+  if (S.factParsed?.facturaId === id) S.factParsed = null;
+  render();
 }
 
 // ── HELPERS DE FORM ──────────────────────────────────────────────────────────
