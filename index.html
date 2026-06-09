@@ -194,6 +194,7 @@ tbody tr:hover td{background:#FAFAFA;cursor:pointer}
     <div class="nav-item" data-page="movimientos" onclick="navigate('movimientos')"><span class="ic">↔️</span>Movimientos</div>
     <div class="nav-item" data-page="mapa" onclick="navigate('mapa')"><span class="ic">🗺️</span>Mapa</div>
     <div class="nav-item" data-page="senales" onclick="navigate('senales')"><span class="ic">📡</span>Señal activa</div>
+    <div class="nav-item" data-page="facturacion" onclick="navigate('facturacion')"><span class="ic">💰</span>Facturación</div>
     <div class="nav-item" data-page="usuarios" id="nav-usuarios" style="display:none" onclick="navigate('usuarios')"><span class="ic">👥</span>Usuarios</div>
   </div>
   <div class="sb-footer" style="display:flex;flex-direction:column;gap:6px">
@@ -455,6 +456,7 @@ const PAGE_META = {
   movimientos:['Movimientos', 'Historial de asignaciones y cambios.'],
   mapa:       ['Mapa',        'Ubicación geográfica de los dispositivos.'],
   senales:    ['Señal activa', 'Control diario de actividad de los dispositivos. 🟢 Con señal · 🔵 Sin señal GPS (ciudad asignada) · ⚪ Sin señal'],
+  facturacion:['Facturación', 'Análisis de gasto por línea. Subí la factura de Claro para detectar excedentes.'],
   usuarios:   ['Usuarios',    'Gestión de accesos y roles.'],
 };
 
@@ -466,6 +468,7 @@ function render() {
   if (S.loading) { body.innerHTML = '<div style="text-align:center;padding:80px;color:var(--muted)">⏳ Cargando...</div>'; return; }
   ({ dashboard: renderDash, inventario: renderInv, sinasignar: renderSinAsignar,
      movimientos: renderMovimientos, mapa: renderMapa, senales: renderSenales,
+     facturacion: renderFacturacion,
      usuarios: renderUsuarios })[S.page]?.(body);
 }
 
@@ -484,17 +487,26 @@ function renderDash(body) {
   const regCnt = {}; filt.forEach(x => { if(x.region) regCnt[x.region] = (regCnt[x.region]||0)+1; });
   const maxC = Math.max(...Object.values(regCnt), 1);
   const now = Date.now();
-  const conSenalHoy = d.filter(x => { const h = S.heartbeats[x.id]; return h && (now - new Date(h.created_at)) < 86400000; }).length;
-  const sinSenal = activos - conSenalHoy;
+  const activosConDisp = d.filter(x => x.estado === 'activo' && !x.sin_dispositivo);
+  const conSenalHoy = activosConDisp.filter(x => { const h = S.heartbeats[x.id]; return h && (now - new Date(h.created_at)) < 86400000; }).length;
+  const sinSenal = activosConDisp.length - conSenalHoy;
+  const sinDisp = d.filter(x => x.sin_dispositivo);
+  const revMes = new Date(); revMes.setDate(revMes.getDate() - 30);
+  const pendRevision = sinDisp.filter(x => !x.ultima_revision || new Date(x.ultima_revision) < revMes).length;
   const incompletos = d.filter(x => incompleteFields(x).length > 0).length;
 
   body.innerHTML = `
-  <div class="kpi-grid" style="grid-template-columns:repeat(6,1fr)">
+  <div class="kpi-grid" style="grid-template-columns:repeat(7,1fr)">
     ${kpi(total, 'Total líneas', '#60A5FA')}
     ${kpi(activos, 'Activos', '#22C55E')}
     ${kpi(conSenalHoy, 'Con señal hoy', '#22C55E')}
     ${kpi(sinSenal, 'Sin señal hoy', sinSenal > 0 ? '#EF4444' : null)}
     ${kpi(enRep, 'En reparación', enRep > 0 ? '#F59E0B' : null)}
+    <div class="kpi-card" style="cursor:pointer;border:${pendRevision>0?'1px solid #FDE68A':''}" onclick="navigate('inventario');S.invMode='sindisp';render()">
+      <div class="kpi-val" style="${pendRevision>0?'color:#D97706':''}">${pendRevision}</div>
+      <div class="kpi-lbl">Revisión pendiente</div>
+      ${pendRevision>0?'<div style="font-size:10px;color:#D97706;margin-top:4px">Sin dispositivo →</div>':''}
+    </div>
     <div class="kpi-card" style="cursor:pointer;border:${incompletos>0?'1px solid #FCA5A5':''}" onclick="navigate('inventario');S.invMode='incompletos';render()">
       <div class="kpi-val" style="${incompletos>0?'color:#EF4444':''}">${incompletos}</div>
       <div class="kpi-lbl">Datos incompletos</div>
@@ -577,17 +589,23 @@ const CAMPOS_REQUERIDOS = [
   ['comodato_url',    'Comodato firmado'],
 ];
 
+const CAMPOS_SOLO_CON_DISP = new Set(['imei','modelo','fecha_entrega','comodato_url']);
 function incompleteFields(x) {
-  return CAMPOS_REQUERIDOS.filter(([k]) => !x[k]).map(([,label]) => label);
+  return CAMPOS_REQUERIDOS.filter(([k]) => {
+    if (x.sin_dispositivo && CAMPOS_SOLO_CON_DISP.has(k)) return false;
+    return !x[k];
+  }).map(([,label]) => label);
 }
 
 function setInvMode(m) { S.invMode = m; render(); }
 
 function renderInv(body) {
   const incompletos = S.devices.filter(x => incompleteFields(x).length > 0);
+  const sinDisp = S.devices.filter(x => x.sin_dispositivo);
 
   let d = [...S.devices];
   if (S.invMode === 'incompletos') d = incompletos;
+  else if (S.invMode === 'sindisp') d = sinDisp;
 
   if (S.search) {
     const q = S.search.toLowerCase();
@@ -602,7 +620,10 @@ function renderInv(body) {
   body.innerHTML = `
   <div style="display:flex;gap:8px;margin-bottom:16px">
     <button class="tab ${S.invMode==='todos'?'active':''}" onclick="setInvMode('todos')">Todos (${S.devices.length})</button>
-    <button class="tab ${S.invMode==='incompletos'?'active':''}" onclick="setInvMode('incompletos')" style="${incompletos.length>0?'color:#EF4444':''}" >
+    <button class="tab ${S.invMode==='sindisp'?'active':''}" onclick="setInvMode('sindisp')" style="${sinDisp.length>0?'color:#D97706':''}">
+      📵 Sin dispositivo (${sinDisp.length})
+    </button>
+    <button class="tab ${S.invMode==='incompletos'?'active':''}" onclick="setInvMode('incompletos')" style="${incompletos.length>0?'color:#EF4444':''}">
       ⚠ Datos incompletos (${incompletos.length})
     </button>
   </div>
@@ -851,8 +872,19 @@ function drwDetail(d) {
     ['Ciudad', d.ciudad||'—'],           ['Fecha de entrega', d.fecha_entrega ? fmtDate(d.fecha_entrega) : '—'],
     ['Estado', '@@estado@@'],
   ];
-  return `<div class="detail-grid">
-    ${fields.map(([l,v]) => `
+  const fieldsFiltered = d.sin_dispositivo
+    ? fields.filter(([l]) => !['IMEI','Modelo','Fecha de entrega'].includes(l))
+    : fields;
+  return `
+  ${d.sin_dispositivo ? `<div style="background:#FEF3C7;border:1px solid #FDE68A;border-radius:8px;padding:10px 14px;margin-bottom:12px;font-size:12px;color:#92400E">
+    📵 <strong>Línea sin dispositivo físico</strong> — el responsable usa celular personal.<br>
+    Última revisión: ${d.ultima_revision ? fmtDate(d.ultima_revision) : '<span style="color:#DC2626">Nunca revisada</span>'}
+    <button onclick="marcarRevisada('${d.id}')" style="margin-top:8px;width:100%;padding:7px;background:#F59E0B;color:#fff;border:none;border-radius:7px;font-size:12px;font-weight:600;cursor:pointer">
+      ✓ Marcar como revisada este mes
+    </button>
+  </div>` : ''}
+  <div class="detail-grid">
+    ${fieldsFiltered.map(([l,v]) => `
       <div class="detail-field">
         <div class="dl">${l}</div>
         <div class="dv">${v==='@@estado@@' ? badgeEstado(d.estado) : escHtml(String(v))}</div>
@@ -860,6 +892,7 @@ function drwDetail(d) {
   </div>
   ${d.comentarios ? `<hr class="divider"><div style="font-size:11px;font-weight:700;color:var(--muted);margin-bottom:6px">COMENTARIOS</div>
     <div style="font-size:13px;color:var(--muted)">${escHtml(d.comentarios)}</div>` : ''}
+  ${!d.sin_dispositivo ? `
   <hr class="divider">
   <div style="font-size:11px;font-weight:700;color:var(--muted);margin-bottom:8px;text-transform:uppercase;letter-spacing:.4px">Comodato</div>
   <div style="display:flex;flex-direction:column;gap:8px">
@@ -876,7 +909,7 @@ function drwDetail(d) {
     <label class="btn btn-secondary" style="justify-content:center;cursor:pointer">
       📤 Subir comodato firmado<input type="file" accept=".pdf" onchange="uploadComodato(this)" style="display:none">
     </label>`}
-  </div>
+  </div>` : ''}
   ${currentProfile?.rol === 'admin' ? `
   <hr class="divider">
   <button onclick="deleteDevice('${d.id}','${escHtml(d.numero_linea)}')"
@@ -926,6 +959,12 @@ function drwEdit(d) {
       </select>
     </div>
     <div class="fg fg-full"><label class="fl">Comentarios</label><textarea class="ft" id="edit-coment">${escHtml(d.comentarios||'')}</textarea></div>
+    <div class="fg fg-full" style="display:flex;align-items:center;gap:10px;padding:10px;background:#F8FAFC;border-radius:8px;border:1px solid #E2E8F0">
+      <input type="checkbox" id="edit-sindisp" ${d.sin_dispositivo?'checked':''} style="width:16px;height:16px;cursor:pointer">
+      <label for="edit-sindisp" style="font-size:13px;color:var(--text);cursor:pointer;font-weight:500">
+        📵 Línea sin dispositivo físico (celular personal)
+      </label>
+    </div>
     <div class="fg fg-full">${fg('Motivo del cambio','fi','edit-motivo','','Ej: reasignación por cambio de zona')}</div>
     <div class="fg fg-full">${fg('Registrado por','fi','edit-usuario','','Tu nombre')}</div>
   </div>
@@ -968,6 +1007,7 @@ async function saveEdit() {
     area:            v('edit-area'),
     estado:          v('edit-estado'),
     comentarios:     v('edit-coment') || null,
+    sin_dispositivo: document.getElementById('edit-sindisp')?.checked ?? false,
   };
   const { error } = await sb.from('devices').update(updates).eq('id', d.id);
   if (error) { toast('Error al guardar: ' + error.message, 'error'); return; }
@@ -987,12 +1027,29 @@ async function saveEdit() {
   render();
 }
 
+async function marcarRevisada(id) {
+  const now = new Date().toISOString();
+  const { error } = await sb.from('devices').update({ ultima_revision: now }).eq('id', id);
+  if (error) { toast('Error: ' + error.message, 'error'); return; }
+  const d = S.devices.find(x => x.id === id);
+  if (d) d.ultima_revision = now;
+  if (S.selected?.id === id) S.selected.ultima_revision = now;
+  toast('Revisión registrada ✓', 'success');
+  renderDrawer();
+}
+
 // ── MODAL NUEVO ──────────────────────────────────────────────────────────────
 function openModal() {
   document.getElementById('modal-body').innerHTML = `
     <div style="background:#EEF2FF;border-radius:8px;padding:10px 14px;margin-bottom:16px;display:flex;align-items:center;justify-content:space-between;gap:10px">
       <span style="font-size:12px;color:var(--primary)">💡 ¿Tenés varios equipos? Importá un CSV desde la página Inventario.</span>
       <button class="btn btn-secondary" onclick="downloadTemplate()" style="font-size:11px;padding:5px 10px;white-space:nowrap">⬇ Template CSV</button>
+    </div>
+    <div style="background:#F8FAFC;border:1px solid #E2E8F0;border-radius:8px;padding:10px 14px;margin-bottom:12px;display:flex;align-items:center;gap:10px">
+      <input type="checkbox" id="nl-sindisp" style="width:16px;height:16px;cursor:pointer">
+      <label for="nl-sindisp" style="font-size:13px;color:var(--text);cursor:pointer;font-weight:500">
+        📵 Línea sin dispositivo físico (celular personal del responsable)
+      </label>
     </div>
     <div class="fg-grid">
       ${fg('Número de línea *','fi','nl-linea','','ej: 2612052273')}
@@ -1061,6 +1118,7 @@ async function saveNew() {
     costo_linea: parseFloat(v('nl-costo'))||null,
     responsable: resp||null, dni_responsable: v('nl-dni')||null,
     fecha_entrega: v('nl-fecha')||null,
+    sin_dispositivo: document.getElementById('nl-sindisp')?.checked ?? false,
     area: v('nl-area')||null, region: v('nl-region')||null, ciudad: v('nl-ciudad')||null,
     estado: v('nl-estado'), comentarios: v('nl-coment')||null,
   };
@@ -1466,6 +1524,209 @@ async function deleteDevice(id, linea) {
   closeDrawer();
   await reloadData();
   render();
+}
+
+// ── FACTURACIÓN ──────────────────────────────────────────────────────────────
+const COSTO_ESPERADO = { CC10R: 5446, CC11R: 7220, CC12R: 9838, CC13C: 14174 };
+
+function renderFacturacion(body) {
+  body.innerHTML = `
+  <div style="max-width:900px">
+    <div class="card" style="margin-bottom:18px">
+      <div style="font-size:13px;color:var(--muted);margin-bottom:14px">
+        Subí la factura PDF de Claro para analizar el gasto por línea y detectar excedentes.
+        Los excedentes se calculan comparando el total facturado con el costo base del plan con bonificación.
+      </div>
+      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+        <label class="btn btn-primary" style="cursor:pointer;display:inline-flex;align-items:center;gap:6px">
+          📄 Subir factura Claro (PDF)
+          <input type="file" accept=".pdf" id="fact-upload" onchange="procesarFactura(this)" style="display:none">
+        </label>
+        <div id="fact-status" style="font-size:13px;color:var(--muted)"></div>
+      </div>
+      <div style="margin-top:12px;padding:10px 14px;background:#F8FAFC;border-radius:8px;font-size:11px;color:var(--muted)">
+        <strong>Costos base esperados por plan (con bonificación 80% x 12 meses):</strong>
+        CC10R → $5.446 · CC11R → $7.220 · CC12R → $9.838 · CC13C → $14.174
+        <br>Si tu bonificación cambió, actualizá los montos manualmente en el código.
+      </div>
+    </div>
+
+    <div id="fact-resumen" style="display:none;margin-bottom:18px">
+      <div class="kpi-grid" style="grid-template-columns:repeat(4,1fr)">
+        <div class="kpi-card"><div class="kpi-val" id="fact-kpi-total">—</div><div class="kpi-lbl">Líneas en factura</div></div>
+        <div class="kpi-card"><div class="kpi-val" id="fact-kpi-ok" style="color:#22C55E">—</div><div class="kpi-lbl">Sin excedente</div></div>
+        <div class="kpi-card" style="border:1px solid #FCA5A5"><div class="kpi-val" id="fact-kpi-exc" style="color:#EF4444">—</div><div class="kpi-lbl">Con excedente</div></div>
+        <div class="kpi-card"><div class="kpi-val" id="fact-kpi-monto" style="color:#EF4444">—</div><div class="kpi-lbl">Total excedente $</div></div>
+      </div>
+    </div>
+
+    <div id="fact-tabla"></div>
+  </div>`;
+}
+
+function parseArgMoney(str) {
+  if (!str || str === '.') return 0;
+  return parseFloat(str.replace(/\./g, '').replace(',', '.').replace(/[$\s]/g, '')) || 0;
+}
+
+async function procesarFactura(input) {
+  const file = input.files[0]; if (!file) return;
+  const status = document.getElementById('fact-status');
+  status.textContent = 'Cargando pdf.js…';
+
+  // Carga diferida de pdf.js
+  if (!window.pdfjsLib) {
+    await new Promise((res, rej) => {
+      const s = document.createElement('script');
+      s.src = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
+      s.onload = res; s.onerror = rej;
+      document.head.appendChild(s);
+    });
+    window.pdfjsLib.GlobalWorkerOptions.workerSrc =
+      'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+  }
+
+  status.textContent = 'Extrayendo texto del PDF…';
+  try {
+    const arrayBuffer = await file.arrayBuffer();
+    const pdf = await window.pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+
+    let allText = [];
+    for (let p = 1; p <= pdf.numPages; p++) {
+      const page = await pdf.getPage(p);
+      const content = await page.getTextContent();
+      allText = allText.concat(content.items.map(i => i.str.trim()).filter(Boolean));
+    }
+
+    const lineas = parsearLineasFactura(allText);
+    if (!lineas.length) {
+      status.textContent = '⚠ No se encontraron líneas. ¿Es una factura de Claro?';
+      return;
+    }
+    status.textContent = `✓ ${lineas.length} líneas procesadas`;
+    mostrarResultadosFactura(lineas);
+  } catch (e) {
+    status.textContent = 'Error al procesar: ' + e.message;
+  }
+}
+
+const SKIP_FACTURA = new Set([
+  'Detalles de línea','Línea','Usuario','Plan','Valor Plan','Servicios','Adicionales',
+  'Excedentes','Bonificaciones','Llamadas','Locales/ Nac.','Internacionales',
+  "''","Roaming","Mensajes","Datos","Otros Cargos","Total por Línea","Provincia",
+  "Abonos y Servicios Mensuales", "Locales/", "Nac."
+]);
+const PLAN_REGEX = /^CC\d{2}[RC]$/;
+
+function parsearLineasFactura(items) {
+  const PHONE_REGEX = /^\d{10}$/;
+  const MONEY_REGEX = /^-?\$[\d.,]+$/;
+  const PROVINCIAS = new Set(['CORDOBA','BUENOS AIRES','CABA','SANTA FE','MENDOZA',
+    'TUCUMAN','SALTA','JUJUY','MISIONES','CORRIENTES','ENTRE RIOS','CHACO','FORMOSA',
+    'SANTIAGO DEL ESTERO','CATAMARCA','LA RIOJA','SAN JUAN','SAN LUIS','NEUQUEN',
+    'RIO NEGRO','CHUBUT','SANTA CRUZ','TIERRA DEL FUEGO','LA PAMPA']);
+
+  // Filtrar ítems de encabezado repetido
+  const filtered = items.filter(s => !SKIP_FACTURA.has(s));
+
+  const result = [];
+  let i = 0;
+  while (i < filtered.length) {
+    const item = filtered[i];
+    if (!PHONE_REGEX.test(item) || item === '00820948575451') { i++; continue; }
+
+    const numero = item;
+    // Siguiente bloque: nombre, plan, precio_plan, [servs...], total, provincia
+    const block = [];
+    let j = i + 1;
+    while (j < filtered.length && !PHONE_REGEX.test(filtered[j]) && block.length < 20) {
+      block.push(filtered[j]);
+      j++;
+    }
+
+    // Encontrar índice del plan (CC10R, CC11R, CC12R, CC13C)
+    const planIdx = block.findIndex(s => PLAN_REGEX.test(s));
+    if (planIdx < 0) { i = j; continue; }
+
+    const plan = block[planIdx];
+    const planPrecio = planIdx + 1 < block.length ? parseArgMoney(block[planIdx + 1]) : 0;
+
+    // Campos de importe: los 8 siguientes al precio del plan (servicios, bonif, llam_loc, llam_int, roaming, mensajes, datos, otros)
+    // Luego viene el total, luego provincia
+    const cargos = block.slice(planIdx + 2);
+    // El total es el último campo monetario antes de la provincia
+    let total = 0;
+    let bonif = 0;
+    for (let k = 0; k < Math.min(cargos.length, 10); k++) {
+      if (MONEY_REGEX.test(cargos[k])) {
+        const val = parseArgMoney(cargos[k]);
+        if (k === 1) bonif = val; // índice 1 = bonificación (siempre negativa)
+        total = val; // el último monetario antes de provincia
+      } else if (PROVINCIAS.has(cargos[k]?.toUpperCase())) {
+        break;
+      }
+    }
+
+    const esperado = COSTO_ESPERADO[plan] || Math.max(0, planPrecio + bonif);
+    const exceso = Math.max(0, total - esperado);
+
+    // Buscar responsable en S.devices
+    const dev = S.devices.find(d => d.numero_linea === numero);
+    result.push({ numero, plan, planPrecio, bonif, total, esperado, exceso,
+      responsable: dev?.responsable || '—', region: dev?.region || '—',
+      enSistema: !!dev, sinDisp: dev?.sin_dispositivo });
+    i = j;
+  }
+  return result;
+}
+
+function mostrarResultadosFactura(lineas) {
+  const resumen = document.getElementById('fact-resumen');
+  resumen.style.display = '';
+  const conExc = lineas.filter(l => l.exceso > 0);
+  const totalExc = conExc.reduce((s, l) => s + l.exceso, 0);
+
+  document.getElementById('fact-kpi-total').textContent = lineas.length;
+  document.getElementById('fact-kpi-ok').textContent = lineas.length - conExc.length;
+  document.getElementById('fact-kpi-exc').textContent = conExc.length;
+  document.getElementById('fact-kpi-monto').textContent = '$' + totalExc.toLocaleString('es-AR', {maximumFractionDigits:0});
+
+  // Ordenar: con exceso primero, luego por monto desc
+  const sorted = [...lineas].sort((a,b) => (b.exceso - a.exceso));
+
+  const fmt = n => '$' + n.toLocaleString('es-AR', {minimumFractionDigits:2, maximumFractionDigits:2});
+
+  document.getElementById('fact-tabla').innerHTML = `
+  <div class="tbl-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Línea</th><th>Responsable</th><th>Región</th><th>Plan</th>
+          <th style="text-align:right">Plan base</th>
+          <th style="text-align:right">Bonif.</th>
+          <th style="text-align:right">Total facturado</th>
+          <th style="text-align:right">Esperado</th>
+          <th style="text-align:right">Excedente</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${sorted.map(l => `
+          <tr style="${l.exceso > 0 ? 'background:#FEF2F2' : ''}${!l.enSistema ? 'opacity:.6' : ''}">
+            <td class="fw6">${l.numero}${l.sinDisp ? ' <span title="Sin dispositivo" style="font-size:10px">📵</span>' : ''}${!l.enSistema ? ' <span style="font-size:10px;color:var(--muted)">(no registrada)</span>' : ''}</td>
+            <td>${escHtml(l.responsable)}</td>
+            <td>${escHtml(l.region)}</td>
+            <td><span class="badge" style="background:#EEF2FF;color:#4F46E5">${l.plan}</span></td>
+            <td style="text-align:right;color:var(--muted)">${fmt(l.planPrecio)}</td>
+            <td style="text-align:right;color:#16A34A">${l.bonif < 0 ? fmt(l.bonif) : '—'}</td>
+            <td style="text-align:right;font-weight:600">${fmt(l.total)}</td>
+            <td style="text-align:right;color:var(--muted)">${fmt(l.esperado)}</td>
+            <td style="text-align:right;font-weight:700;color:${l.exceso > 0 ? '#EF4444' : '#22C55E'}">
+              ${l.exceso > 0 ? '+' + fmt(l.exceso) : '✓'}
+            </td>
+          </tr>`).join('')}
+      </tbody>
+    </table>
+  </div>`;
 }
 
 // ── HELPERS DE FORM ──────────────────────────────────────────────────────────
