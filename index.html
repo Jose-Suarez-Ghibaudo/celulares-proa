@@ -1638,9 +1638,12 @@ function renderFactPreview(parsed) {
         <div style="font-weight:700;font-size:15px;color:var(--text)">${escHtml(meta.periodo)} — Factura ${escHtml(meta.numero_factura||'—')}</div>
         <div style="font-size:12px;color:var(--muted)">Fecha: ${meta.fecha_factura||'—'} · Total: $${(meta.total_factura||0).toLocaleString('es-AR',{maximumFractionDigits:0})}</div>
       </div>
-      <div style="display:flex;gap:8px">
-        <button onclick="S.factParsed=null;render()" class="btn btn-secondary" style="font-size:12px">✕ Descartar</button>
-        <button onclick="guardarFactura()" class="btn btn-primary" style="font-size:12px">💾 Guardar factura</button>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button onclick="S.factParsed=null;render()" class="btn btn-secondary" style="font-size:12px">✕ Cerrar</button>
+        ${parsed.guardada
+          ? (sinReg.length > 0 ? `<button onclick="importarLineasDesdeFactura()" class="btn btn-primary" style="font-size:12px;background:#16A34A">📥 Importar ${sinReg.length} línea(s) al inventario</button>` : '')
+          : `<button onclick="guardarFactura()" class="btn btn-primary" style="font-size:12px">💾 Guardar factura</button>`
+        }
       </div>
     </div>
 
@@ -1947,6 +1950,29 @@ async function guardarFactura() {
   toast(msg, 'success');
   S.factParsed = null;
   S.facturas = [];
+  await reloadData();
+  render();
+}
+
+async function importarLineasDesdeFactura() {
+  const lineas = S.factParsed?.lineas || [];
+  const nuevas = lineas.filter(l => !l.en_sistema);
+  if (!nuevas.length) { toast('No hay líneas nuevas para importar', 'info'); return; }
+
+  const nuevosDevices = nuevas.map(l => ({
+    numero_linea: l.numero_linea,
+    plan: l.plan,
+    carga_datos: PLANES[l.plan]?.datos || null,
+    estado: 'activo',
+  }));
+
+  const { error } = await sb.from('devices').insert(nuevosDevices);
+  if (error) { toast('Error al importar: ' + error.message, 'error'); return; }
+
+  // Marcar como en_sistema en la vista actual
+  nuevas.forEach(l => { l.en_sistema = true; });
+
+  toast(`${nuevas.length} línea(s) importadas al inventario ✓`, 'success');
   await reloadData();
   render();
 }
