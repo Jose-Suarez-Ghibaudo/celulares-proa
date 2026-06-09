@@ -1923,9 +1923,31 @@ async function guardarFactura() {
   const { error: linErr } = await sb.from('factura_lineas').insert(lineasRows);
   if (linErr) { toast('Error al guardar líneas: ' + linErr.message, 'error'); return; }
 
-  toast(`Factura ${meta.periodo} guardada ✓`, 'success');
+  // Auto-importar líneas que no estaban en el sistema
+  const nuevas = lineas.filter(l => !l.en_sistema);
+  let importadas = 0;
+  if (nuevas.length) {
+    const nuevosDevices = nuevas.map(l => ({
+      numero_linea: l.numero_linea,
+      plan: l.plan,
+      carga_datos: PLANES[l.plan]?.datos || null,
+      estado: 'activo',
+    }));
+    const { error: impErr } = await sb.from('devices').insert(nuevosDevices);
+    if (impErr) {
+      toast('Factura guardada pero error al importar líneas: ' + impErr.message, 'error');
+    } else {
+      importadas = nuevas.length;
+    }
+  }
+
+  const msg = importadas > 0
+    ? `Factura ${meta.periodo} guardada ✓ · ${importadas} línea(s) nuevas agregadas al inventario`
+    : `Factura ${meta.periodo} guardada ✓`;
+  toast(msg, 'success');
   S.factParsed = null;
   S.facturas = [];
+  await reloadData();
   render();
 }
 
