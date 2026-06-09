@@ -277,13 +277,23 @@ tbody tr:hover td{background:#FAFAFA;cursor:pointer}
     </div>
     <div id="login-form">
       <input id="login-email" type="email" placeholder="Email" autocomplete="email"
+        oninput="clearLoginErr()"
         style="width:100%;padding:11px 14px;border:1px solid #E2E8F0;border-radius:10px;font-size:14px;margin-bottom:10px;outline:none;box-sizing:border-box"/>
-      <input id="login-pass" type="password" placeholder="Contraseña" autocomplete="current-password"
-        style="width:100%;padding:11px 14px;border:1px solid #E2E8F0;border-radius:10px;font-size:14px;margin-bottom:16px;outline:none;box-sizing:border-box"/>
-      <button onclick="doLogin()" style="width:100%;padding:12px;background:#4F46E5;color:#fff;border:none;border-radius:10px;font-size:15px;font-weight:600;cursor:pointer">
+      <div style="position:relative;margin-bottom:16px">
+        <input id="login-pass" type="password" placeholder="Contraseña" autocomplete="current-password"
+          oninput="clearLoginErr()"
+          onkeydown="if(event.key==='Enter')doLogin()"
+          style="width:100%;padding:11px 44px 11px 14px;border:1px solid #E2E8F0;border-radius:10px;font-size:14px;outline:none;box-sizing:border-box"/>
+        <button type="button" onclick="togglePassVis()" tabindex="-1"
+          style="position:absolute;right:12px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;padding:4px;color:#94A3B8;font-size:18px;line-height:1"
+          title="Mostrar / ocultar contraseña">
+          <span id="eye-icon">👁</span>
+        </button>
+      </div>
+      <button id="login-btn" onclick="doLogin()" style="width:100%;padding:12px;background:#4F46E5;color:#fff;border:none;border-radius:10px;font-size:15px;font-weight:600;cursor:pointer">
         Ingresar
       </button>
-      <p id="login-error" style="color:#EF4444;font-size:12px;text-align:center;margin-top:10px;display:none"></p>
+      <p id="login-error" style="color:#EF4444;font-size:13px;text-align:center;margin-top:12px;display:none;background:#FEF2F2;border:1px solid #FECACA;border-radius:8px;padding:8px 12px"></p>
     </div>
   </div>
 </div>
@@ -319,13 +329,40 @@ async function loadProfile() {
   if (data?.rol === 'admin') document.getElementById('nav-usuarios').style.display = '';
 }
 
+function showLoginErr(msg) {
+  const err = document.getElementById('login-error');
+  err.textContent = msg;
+  err.style.display = 'block';
+  const emailEl = document.getElementById('login-email');
+  const passEl  = document.getElementById('login-pass');
+  [emailEl, passEl].forEach(el => { el.style.borderColor = '#EF4444'; });
+}
+function clearLoginErr() {
+  const err = document.getElementById('login-error');
+  err.style.display = 'none';
+  const emailEl = document.getElementById('login-email');
+  const passEl  = document.getElementById('login-pass');
+  [emailEl, passEl].forEach(el => { el.style.borderColor = '#E2E8F0'; });
+}
+function togglePassVis() {
+  const inp = document.getElementById('login-pass');
+  const eye = document.getElementById('eye-icon');
+  if (inp.type === 'password') { inp.type = 'text'; eye.textContent = '🙈'; }
+  else { inp.type = 'password'; eye.textContent = '👁'; }
+  inp.focus();
+}
 async function doLogin() {
   const email = document.getElementById('login-email').value.trim();
   const pass  = document.getElementById('login-pass').value;
-  const err   = document.getElementById('login-error');
-  err.style.display = 'none';
+  clearLoginErr();
+  if (!email) { showLoginErr('Ingresá tu email corporativo.'); return; }
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { showLoginErr('El email no tiene un formato válido.'); return; }
+  if (!pass)  { showLoginErr('Ingresá tu contraseña.'); return; }
+  const btn = document.getElementById('login-btn');
+  btn.disabled = true; btn.textContent = 'Ingresando…';
   const { error } = await sb.auth.signInWithPassword({ email, password: pass });
-  if (error) { err.textContent = 'Email o contraseña incorrectos'; err.style.display = 'block'; return; }
+  btn.disabled = false; btn.textContent = 'Ingresar';
+  if (error) { showLoginErr('Email o contraseña incorrectos. Verificá y volvé a intentar.'); return; }
   const { data: { session } } = await sb.auth.getSession();
   currentUser = session.user;
   await loadProfile();
