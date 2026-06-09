@@ -573,10 +573,12 @@ const CAMPOS_REQUERIDOS = [
   ['area',            'Área'],
   ['region',          'Región'],
   ['ciudad',          'Ciudad'],
+  ['fecha_entrega',   'Fecha de entrega'],
+  ['comodato_url',    'Comodato firmado'],
 ];
 
 function incompleteFields(x) {
-  return CAMPOS_REQUERIDOS.filter(([k]) => !x[k]?.trim()).map(([,label]) => label);
+  return CAMPOS_REQUERIDOS.filter(([k]) => !x[k]).map(([,label]) => label);
 }
 
 function setInvMode(m) { S.invMode = m; render(); }
@@ -846,7 +848,8 @@ function drwDetail(d) {
     ['Carga de datos', d.carga_datos||'—'], ['Código', d.codigo||'—'],
     ['Responsable', d.responsable||'—'], ['DNI', d.dni_responsable||'—'],
     ['Área', d.area||'—'],               ['Región', d.region||'—'],
-    ['Ciudad', d.ciudad||'—'],           ['Estado', '@@estado@@'],
+    ['Ciudad', d.ciudad||'—'],           ['Fecha de entrega', d.fecha_entrega ? fmtDate(d.fecha_entrega) : '—'],
+    ['Estado', '@@estado@@'],
   ];
   return `<div class="detail-grid">
     ${fields.map(([l,v]) => `
@@ -886,6 +889,7 @@ function drwEdit(d) {
   return `<div class="fg-grid">
     ${fg('Responsable','fi','edit-resp',d.responsable||'')}
     ${fg('DNI responsable','fi','edit-dni',d.dni_responsable||'')}
+    ${fg('Fecha de entrega','fi','edit-fecha',d.fecha_entrega||'','','date')}
     <div class="fg"><label class="fl">Región</label>
       <select class="fs" id="edit-region">
         <option value="">— Seleccionar región —</option>
@@ -954,6 +958,7 @@ async function saveEdit() {
   const updates = {
     responsable:     v('edit-resp'),
     dni_responsable: v('edit-dni'),
+    fecha_entrega:   v('edit-fecha') || null,
     region:          v('edit-region'),
     ciudad:          v('edit-ciudad'),
     plan:            v('edit-plan') || null,
@@ -1011,6 +1016,7 @@ function openModal() {
       ${fg('Costo de línea ($)','fi','nl-costo','','0', 'number')}
       ${fg('Responsable *','fi','nl-resp','')}
       ${fg('DNI responsable','fi','nl-dni','')}
+      ${fg('Fecha de entrega','fi','nl-fecha','','','date')}
       <div class="fg"><label class="fl">Área</label>
         <select class="fs" id="nl-area">
           <option value="">— Seleccionar área —</option>
@@ -1054,6 +1060,7 @@ async function saveNew() {
     plan: v('nl-plan')||null, carga_datos: v('nl-datos')||null,
     costo_linea: parseFloat(v('nl-costo'))||null,
     responsable: resp||null, dni_responsable: v('nl-dni')||null,
+    fecha_entrega: v('nl-fecha')||null,
     area: v('nl-area')||null, region: v('nl-region')||null, ciudad: v('nl-ciudad')||null,
     estado: v('nl-estado'), comentarios: v('nl-coment')||null,
   };
@@ -1400,7 +1407,7 @@ function generateComodato() {
   <p>Entre <strong>Proa Consulting para OSC S.A.</strong> CUIT 33714783659, con domicilio en calle Santiago Derqui 33 piso 1, CP 5000, de la ciudad de Córdoba, representada en este acto por el Sr. Luciano Emanuel Grenni, DNI 28655758 en su carácter de socio gerente, en adelante denominada la "Comodatario", por una parte, y el/la Sr./Srta. <strong>${escHtml(d.responsable||'___________')}</strong>, DNI N° <strong>${escHtml(d.dni_responsable||'___________')}</strong>, con domicilio en la ciudad de <strong>${escHtml(d.ciudad||'___________')}</strong>, en adelante llamado el/la "Comodante", por la otra, se celebra el presente Contrato de Comodato, sujeto a las siguientes cláusulas:</p>
   <p><strong>PRIMERA:</strong> La comodante recibe los siguientes bienes muebles que se describen a continuación al Comodatario, con facultad de usarlos:</p>
   <table><thead><tr><th>ELEMENTO</th><th>MODELO / CÓDIGO</th><th>DETALLE</th><th>FECHA DE ENTREGA AL EMPLEADO</th><th>FIRMA EMPLEADO</th></tr></thead>
-  <tbody><tr><td>${escHtml(d.modelo||'—')}</td><td>${escHtml(d.imei||'—')}</td><td>Línea: ${escHtml(d.numero_linea)}</td><td></td><td></td></tr></tbody></table>
+  <tbody><tr><td>${escHtml(d.modelo||'—')}</td><td>${escHtml(d.imei||'—')}</td><td>Línea: ${escHtml(d.numero_linea)}</td><td>${d.fecha_entrega ? new Date(d.fecha_entrega+'T12:00:00').toLocaleDateString('es-AR',{day:'2-digit',month:'2-digit',year:'numeric'}) : ''}</td><td></td></tr></tbody></table>
   <p><strong>SEGUNDA:</strong> Las cosas comodatadas son usadas, encontrándose en buen estado de conservación y funcionamiento, y las que presentan alguna particularidad, se encuentran detalladas en el punto anterior.</p>
   <p><strong>TERCERA:</strong> El uso que deberá darse a la cosa comodatada es a los fines del desempeño de las tareas enmarcadas en el evento y aquellas que surgen por los actos relacionados a las actividades de Proa Consulting para OSC S.A., y se prohíbe darle un uso distinto, estableciéndose en este supuesto la rescisión del contrato por culpa del Comodatario, más daños y perjuicios.</p>
   <p><strong>CUARTA:</strong> Será obligación del Comodatario restituir la cosa comodatada en el mismo buen estado y funcionamiento en que hoy la recibe, salvo el deterioro originado por el buen uso y el transcurso del tiempo, caso contrario deberá responder por los daños y perjuicios.</p>
@@ -1476,9 +1483,9 @@ function onPlanChange(planId, datosId) {
 
 // ── TEMPLATE CSV + IMPORTACIÓN MASIVA ────────────────────────────────────────
 function downloadTemplate() {
-  const cols    = ['numero_linea','imei','marca','modelo','plan','carga_datos','responsable','dni_responsable','area','region','ciudad','estado','comentarios'];
-  const refs    = ['REQUERIDO','','SAMSUNG|LG|MOTOROLA|APPLE|XIAOMI','ej: Galaxy A10','CC10R|CC11R|CC12R|CC13C','2GB|4GB|7GB|10GB (auto con plan)','','','ADM|HR|DD|DATOS|SELECCION|DIRECCION','CABA|GBA|BUENOS AIRES|CENTRO|CUYO|LITORAL|NEA|NOA|PATAGONIA|OPERACIONES','ej: MENDOZA','activo|stock|en_reparacion|baja',''];
-  const ejemplo = ['2612052273','352031112409031','SAMSUNG','Galaxy A10','CC10R','2GB','JUAN PEREZ','12345678','DD','CUYO','MENDOZA','activo',''];
+  const cols    = ['numero_linea','imei','marca','modelo','plan','carga_datos','responsable','dni_responsable','fecha_entrega','area','region','ciudad','estado','comentarios'];
+  const refs    = ['REQUERIDO','','SAMSUNG|LG|MOTOROLA|APPLE|XIAOMI','ej: Galaxy A10','CC10R|CC11R|CC12R|CC13C','2GB|4GB|7GB|10GB (auto con plan)','','','YYYY-MM-DD (ej: 2026-01-15)','ADM|HR|DD|DATOS|SELECCION|DIRECCION','CABA|GBA|BUENOS AIRES|CENTRO|CUYO|LITORAL|NEA|NOA|PATAGONIA|OPERACIONES','ej: MENDOZA','activo|stock|en_reparacion|baja',''];
+  const ejemplo = ['2612052273','352031112409031','SAMSUNG','Galaxy A10','CC10R','2GB','JUAN PEREZ','12345678','2026-01-15','DD','CUYO','MENDOZA','activo',''];
   const csv = [cols.join(','), refs.join(','), ejemplo.join(',')].join('\n');
   const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' });
   const a = Object.assign(document.createElement('a'), {
@@ -1521,6 +1528,7 @@ async function importCSV(input) {
       if (carga_datos)          updates.carga_datos     = carga_datos;
       if (row.responsable)      updates.responsable     = row.responsable;
       if (row.dni_responsable)  updates.dni_responsable = row.dni_responsable;
+      if (row.fecha_entrega)    updates.fecha_entrega   = row.fecha_entrega;
       if (row.area)             updates.area            = row.area;
       if (row.region)           updates.region          = row.region;
       if (row.ciudad)           updates.ciudad          = row.ciudad;
@@ -1541,6 +1549,7 @@ async function importCSV(input) {
         costo_linea: parseFloat(row.costo_linea) || null,
         responsable: row.responsable || null,
         dni_responsable: row.dni_responsable || null,
+        fecha_entrega: row.fecha_entrega || null,
         area: row.area || null, region: row.region || null,
         ciudad: row.ciudad || null,
         estado: ['activo','stock','en_reparacion','baja'].includes(row.estado) ? row.estado : 'activo',
