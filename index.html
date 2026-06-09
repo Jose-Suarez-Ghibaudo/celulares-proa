@@ -1383,7 +1383,7 @@ function generateComodato() {
     <table><thead><tr><th>ELEMENTO</th><th>MODELO / CÓDIGO</th><th>ESTADO MATERIAL DEVUELTO</th><th>FECHA DEVOLUCIÓN</th><th>FIRMA QUIEN RECIBE</th><th>FIRMA EMPLEADO</th></tr></thead>
     <tbody><tr><td>${escHtml(d.modelo||'—')}</td><td>${escHtml(d.imei||'—')}</td><td></td><td></td><td></td><td></td></tr></tbody></table>
   </div>
-  <script>window.onload=()=>{ window.print(); }</script>
+  <script>window.onload=()=>{ window.print(); }\u003C/script>
   </body></html>`;
   const w = window.open('', '_blank');
   w.document.write(html);
