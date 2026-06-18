@@ -1428,7 +1428,10 @@ async function renderUsuarios(body) {
               </select>
             </td>
             <td>${p.rol === 'admin' ? '<span class="badge bg-green">Sí ✉️</span>' : '<span class="badge bg-gray">No</span>'}</td>
-            <td><button onclick="deleteUser('${p.id}','${p.nombre||p.email}')" style="background:none;border:none;cursor:pointer;color:var(--muted);font-size:16px;padding:2px 6px;border-radius:4px" title="Eliminar usuario">🗑</button></td>
+            <td style="display:flex;gap:4px;align-items:center">
+              <button onclick="editUser('${p.id}','${escHtml(p.nombre||'')}','${p.email||''}','${p.rol||'viewer'}')" style="background:none;border:none;cursor:pointer;color:var(--primary);font-size:15px;padding:2px 6px;border-radius:4px" title="Editar usuario">✏️</button>
+              <button onclick="deleteUser('${p.id}','${escHtml(p.nombre||p.email)}')" style="background:none;border:none;cursor:pointer;color:var(--muted);font-size:15px;padding:2px 6px;border-radius:4px" title="Eliminar usuario">🗑</button>
+            </td>
           </tr>`).join('') || '<tr><td colspan="5" class="no-data">Sin usuarios</td></tr>'}
       </tbody>
     </table>
@@ -1563,6 +1566,90 @@ async function syncAllAuthUsers() {
   if(msg) msg.innerHTML = `<span style="color:#16A34A">✅ Se sincronizaron <strong>${created}</strong> usuario(s) sin perfil.</span>`;
   toast(`${created} usuario(s) sincronizados`, 'success');
   setTimeout(() => renderUsuarios(document.getElementById('main-body')), 1800);
+}
+
+// ── Editar usuario ────────────────────────────────────────────────────────────
+function editUser(userId, nombre, email, rol) {
+  // Crear modal de edición
+  let existing = document.getElementById('edit-user-modal');
+  if (existing) existing.remove();
+
+  const modal = document.createElement('div');
+  modal.id = 'edit-user-modal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:500;display:flex;align-items:center;justify-content:center';
+  modal.innerHTML = `
+    <div style="background:#fff;border-radius:16px;width:460px;max-width:95vw;box-shadow:0 20px 60px rgba(0,0,0,.2);overflow:hidden" onclick="event.stopPropagation()">
+      <div style="padding:18px 22px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center">
+        <div style="font-size:15px;font-weight:700">Editar usuario</div>
+        <button onclick="document.getElementById('edit-user-modal').remove()" style="background:none;border:none;font-size:18px;cursor:pointer;color:var(--muted);padding:2px 6px;border-radius:4px">✕</button>
+      </div>
+      <div style="padding:22px;display:flex;flex-direction:column;gap:14px">
+        <div class="fg">
+          <label class="fl">Nombre completo</label>
+          <input id="eu-nombre" class="fi" value="${escHtml(nombre)}" placeholder="Nombre completo"/>
+        </div>
+        <div class="fg">
+          <label class="fl">Email</label>
+          <input id="eu-email" class="fi" type="email" value="${escHtml(email)}" placeholder="Email"/>
+        </div>
+        <div class="fg">
+          <label class="fl">Nueva contraseña <span style="font-weight:400;color:var(--muted)">(dejar vacío para no cambiar)</span></label>
+          <input id="eu-pass" class="fi" type="text" placeholder="Mínimo 6 caracteres"/>
+        </div>
+        <div class="fg">
+          <label class="fl">Rol</label>
+          <select id="eu-rol" class="fs">
+            <option value="viewer" ${rol==='viewer'?'selected':''}>Viewer</option>
+            <option value="admin"  ${rol==='admin' ?'selected':''}>Admin — recibe alertas</option>
+          </select>
+        </div>
+        <p id="eu-msg" style="font-size:12px;margin:0;line-height:1.5;min-height:18px"></p>
+      </div>
+      <div style="padding:14px 22px;border-top:1px solid var(--border);display:flex;justify-content:flex-end;gap:8px">
+        <button class="btn btn-secondary" onclick="document.getElementById('edit-user-modal').remove()">Cancelar</button>
+        <button class="btn btn-primary" onclick="saveEditUser('${userId}')">Guardar cambios</button>
+      </div>
+    </div>`;
+  modal.addEventListener('click', () => modal.remove());
+  document.body.appendChild(modal);
+}
+
+async function saveEditUser(userId) {
+  const nombre = document.getElementById('eu-nombre')?.value?.trim();
+  const email  = document.getElementById('eu-email')?.value?.trim();
+  const pass   = document.getElementById('eu-pass')?.value?.trim();
+  const rol    = document.getElementById('eu-rol')?.value || 'viewer';
+  const msg    = document.getElementById('eu-msg');
+
+  if (!nombre) { if(msg) msg.innerHTML = '<span style="color:var(--danger)">El nombre es obligatorio.</span>'; return; }
+  if (!email)  { if(msg) msg.innerHTML = '<span style="color:var(--danger)">El email es obligatorio.</span>'; return; }
+  if (pass && pass.length < 6) { if(msg) msg.innerHTML = '<span style="color:var(--danger)">La contraseña debe tener al menos 6 caracteres.</span>'; return; }
+
+  if(msg) msg.innerHTML = '<span style="color:var(--muted)">⏳ Guardando...</span>';
+
+  // Armar payload para Auth admin update
+  const authPayload = { email, user_metadata: { nombre } };
+  if (pass) authPayload.password = pass;
+
+  const { error: authErr } = await sbAdmin.auth.admin.updateUserById(userId, authPayload);
+  if (authErr) {
+    if(msg) msg.innerHTML = `<span style="color:var(--danger)">❌ Error en Auth: ${authErr.message}</span>`;
+    return;
+  }
+
+  // Actualizar tabla profiles
+  const { error: profErr } = await sbAdmin.from('profiles').update({ nombre, email, rol }).eq('id', userId);
+  if (profErr) {
+    if(msg) msg.innerHTML = `<span style="color:var(--danger)">❌ Error al actualizar perfil: ${profErr.message}</span>`;
+    return;
+  }
+
+  if(msg) msg.innerHTML = '<span style="color:#16A34A">✅ Usuario actualizado correctamente.</span>';
+  toast('Usuario actualizado ✅', 'success');
+  setTimeout(() => {
+    document.getElementById('edit-user-modal')?.remove();
+    renderUsuarios(document.getElementById('main-body'));
+  }, 1200);
 }
 
 async function deleteUser(userId, nombre) {
