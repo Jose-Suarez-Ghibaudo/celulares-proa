@@ -1453,21 +1453,38 @@ async function inviteUser() {
   if (msg) msg.textContent = 'Creando usuario...';
 
   const { data, error } = await sb.auth.signUp({ email, password: pass, options: { data: { nombre } } });
-  if (error) { if(msg) msg.textContent = error.message; return; }
+  if (error) { if(msg) msg.textContent = '❌ ' + error.message; return; }
+
+  // Check if user was actually created (identities === null means duplicate email)
+  if (data?.user?.identities?.length === 0 || (data?.user && !data?.user?.identities)) {
+    if(msg) msg.textContent = '⚠ Ese email ya está registrado. Si no puede ingresar, verificá que haya confirmado su email.';
+    return;
+  }
 
   const userId = data?.user?.id;
   if (userId) {
-    await sb.from('profiles').upsert({ id: userId, nombre, email, rol }, { onConflict: 'id' });
+    const { error: profErr } = await sb.from('profiles').upsert({ id: userId, nombre, email, rol }, { onConflict: 'id' });
+    if (profErr) {
+      console.warn('Error creating profile:', profErr);
+      if(msg) msg.textContent = `⚠ Usuario creado en auth pero hubo un error al crear el perfil: ${profErr.message}`;
+      return;
+    }
   }
 
-  if (msg) msg.textContent = `✅ Usuario creado. Que ${nombre} inicie sesión con: ${email} / ${pass}`;
-  showToast(`Usuario ${nombre} agregado`, 'success');
+  // Check if email confirmation is pending
+  const needsConfirm = data?.user && !data.user.email_confirmed_at;
+  if (needsConfirm) {
+    if (msg) msg.innerHTML = `✅ Usuario creado. <strong>⚠ Necesita confirmar el email</strong> antes de poder ingresar.<br>Si no recibe el email, desactivá "Confirm email" en Supabase → Authentication → Providers → Email.`;
+  } else {
+    if (msg) msg.textContent = `✅ Usuario creado. Que ${nombre} inicie sesión con: ${email} / ${pass}`;
+  }
+  toast(`Usuario ${nombre} agregado`, 'success');
   setTimeout(() => renderUsuarios(document.getElementById('main-body')), 2000);
 }
 
 async function updateRol(userId, rol) {
   await sb.from('profiles').update({ rol }).eq('id', userId);
-  showToast('Rol actualizado', 'success');
+  toast('Rol actualizado', 'success');
 }
 
 // ── COMODATO ─────────────────────────────────────────────────────────────────
