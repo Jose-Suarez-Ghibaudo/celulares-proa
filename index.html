@@ -305,8 +305,13 @@ tbody tr:hover td{background:#FAFAFA;cursor:pointer}
 // ── Config ──────────────────────────────────────────────────────────────────
 const SB_URL = 'https://wnezvlpxrzpobtanrkum.supabase.co';
 const SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InduZXp2bHB4cnpwb2J0YW5ya3VtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODAwNjgxNTIsImV4cCI6MjA5NTY0NDE1Mn0.8ScEwCYxZboRl5L-na9iyqpIGJK4xH0BTTHU5SgHbDs';
+const SB_SERVICE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InduZXp2bHB4cnpwb2J0YW5ya3VtIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc4MDA2ODE1MiwiZXhwIjoyMDk1NjQ0MTUyfQ.BBQInywxVY0yLg-TvzcUa3NGdOQysp1LV7uWwCYbSCg';
 const { createClient } = supabase;
 const sb = createClient(SB_URL, SB_KEY);
+// Cliente admin (service role) — solo para operaciones de gestión de usuarios
+const sbAdmin = createClient(SB_URL, SB_SERVICE_KEY, {
+  auth: { autoRefreshToken: false, persistSession: false }
+});
 
 // ── Auth ─────────────────────────────────────────────────────────────────────
 let currentUser = null;
@@ -1399,15 +1404,17 @@ async function togglePush() {
 // ── USUARIOS ─────────────────────────────────────────────────────────────────
 async function renderUsuarios(body) {
   body.innerHTML = '<div style="text-align:center;padding:40px;color:var(--muted)">⏳ Cargando...</div>';
-  const { data: profiles, error } = await sb.from('profiles').select('id, nombre, email, rol, created_at');
+  // Usamos sbAdmin para leer perfiles completos sin restricciones de RLS
+  const { data: profiles, error } = await sbAdmin.from('profiles').select('id, nombre, email, rol, created_at');
 
   body.innerHTML = `
   <div class="tbl-wrap" style="margin-bottom:18px">
-    <div class="tbl-hdr" style="justify-content:space-between">
+    <div class="tbl-hdr" style="justify-content:space-between;align-items:center">
       <span style="font-size:13px;font-weight:600">${(profiles||[]).length} usuario(s) registrados</span>
+      <button class="btn btn-secondary" style="font-size:12px;padding:5px 12px" onclick="syncAllAuthUsers()" title="Sincronizar usuarios de Auth que no tienen perfil">🔄 Sincronizar Auth</button>
     </div>
     <table>
-      <thead><tr><th>Nombre</th><th>Email</th><th>Rol</th><th>Recibe alertas</th></tr></thead>
+      <thead><tr><th>Nombre</th><th>Email</th><th>Rol</th><th>Recibe alertas</th><th></th></tr></thead>
       <tbody>
         ${(profiles||[]).map(p => `
           <tr>
@@ -1421,23 +1428,25 @@ async function renderUsuarios(body) {
               </select>
             </td>
             <td>${p.rol === 'admin' ? '<span class="badge bg-green">Sí ✉️</span>' : '<span class="badge bg-gray">No</span>'}</td>
-          </tr>`).join('') || '<tr><td colspan="4" class="no-data">Sin usuarios</td></tr>'}
+            <td><button onclick="deleteUser('${p.id}','${p.nombre||p.email}')" style="background:none;border:none;cursor:pointer;color:var(--muted);font-size:16px;padding:2px 6px;border-radius:4px" title="Eliminar usuario">🗑</button></td>
+          </tr>`).join('') || '<tr><td colspan="5" class="no-data">Sin usuarios</td></tr>'}
       </tbody>
     </table>
   </div>
   <div class="card" style="padding:18px">
-    <div style="font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:12px">Agregar usuario</div>
+    <div style="font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:4px">Agregar usuario</div>
+    <div style="font-size:11px;color:var(--muted);margin-bottom:12px">El usuario podrá ingresar inmediatamente sin necesidad de confirmar email.</div>
     <div style="display:flex;gap:10px;flex-wrap:wrap">
       <input id="inv-nombre" placeholder="Nombre completo" style="padding:9px 12px;border:1px solid var(--border);border-radius:8px;font-size:13px;flex:1;min-width:160px"/>
       <input id="inv-email" type="email" placeholder="Email" style="padding:9px 12px;border:1px solid var(--border);border-radius:8px;font-size:13px;flex:1;min-width:200px"/>
-      <input id="inv-pass" type="text" placeholder="Contraseña temporal" style="padding:9px 12px;border:1px solid var(--border);border-radius:8px;font-size:13px;width:180px"/>
+      <input id="inv-pass" type="text" placeholder="Contraseña temporal (mín 6 car.)" style="padding:9px 12px;border:1px solid var(--border);border-radius:8px;font-size:13px;width:220px"/>
       <select id="inv-rol" style="padding:9px 12px;border:1px solid var(--border);border-radius:8px;font-size:13px;background:#fff">
         <option value="viewer">Viewer</option>
         <option value="admin">Admin — recibe alertas</option>
       </select>
       <button class="btn btn-primary" onclick="inviteUser()">Agregar</button>
     </div>
-    <p id="inv-msg" style="font-size:12px;margin-top:10px;color:var(--muted)"></p>
+    <p id="inv-msg" style="font-size:12px;margin-top:12px;line-height:1.5"></p>
   </div>`;
 }
 
@@ -1450,41 +1459,123 @@ async function inviteUser() {
   if (!email || !nombre || !pass) { if(msg) msg.textContent = 'Completá nombre, email y contraseña.'; return; }
   if (pass.length < 6) { if(msg) msg.textContent = 'La contraseña debe tener al menos 6 caracteres.'; return; }
 
-  if (msg) msg.textContent = 'Creando usuario...';
+  if (msg) msg.innerHTML = '<span style="color:var(--muted)">⏳ Creando usuario...</span>';
 
-  const { data, error } = await sb.auth.signUp({ email, password: pass, options: { data: { nombre } } });
-  if (error) { if(msg) msg.textContent = '❌ ' + error.message; return; }
+  // ── Usamos Admin API (service role) para crear el usuario SIN confirmación de email
+  const { data, error } = await sbAdmin.auth.admin.createUser({
+    email,
+    password: pass,
+    email_confirm: true,          // lo marcamos como confirmado automáticamente
+    user_metadata: { nombre }
+  });
 
-  // Check if user was actually created (identities === null means duplicate email)
-  if (data?.user?.identities?.length === 0 || (data?.user && !data?.user?.identities)) {
-    if(msg) msg.textContent = '⚠ Ese email ya está registrado. Si no puede ingresar, verificá que haya confirmado su email.';
+  if (error) {
+    // Si el usuario ya existe en Auth, intentamos recuperar su ID y crear/actualizar el perfil
+    if (error.message?.toLowerCase().includes('already been registered') || error.status === 422) {
+      if(msg) msg.innerHTML = '<span style="color:#D97706">⚠ El email ya existe en el sistema. Intentando sincronizar perfil...</span>';
+      await syncSingleUser(email, nombre, rol, msg);
+      return;
+    }
+    if(msg) msg.innerHTML = `<span style="color:var(--danger)">❌ ${error.message}</span>`;
     return;
   }
 
   const userId = data?.user?.id;
-  if (userId) {
-    const { error: profErr } = await sb.from('profiles').upsert({ id: userId, nombre, email, rol }, { onConflict: 'id' });
-    if (profErr) {
-      console.warn('Error creating profile:', profErr);
-      if(msg) msg.textContent = `⚠ Usuario creado en auth pero hubo un error al crear el perfil: ${profErr.message}`;
-      return;
-    }
+  if (!userId) {
+    if(msg) msg.innerHTML = '<span style="color:var(--danger)">❌ No se pudo obtener el ID del usuario creado.</span>';
+    return;
   }
 
-  // Check if email confirmation is pending
-  const needsConfirm = data?.user && !data.user.email_confirmed_at;
-  if (needsConfirm) {
-    if (msg) msg.innerHTML = `✅ Usuario creado. <strong>⚠ Necesita confirmar el email</strong> antes de poder ingresar.<br>Si no recibe el email, desactivá "Confirm email" en Supabase → Authentication → Providers → Email.`;
-  } else {
-    if (msg) msg.textContent = `✅ Usuario creado. Que ${nombre} inicie sesión con: ${email} / ${pass}`;
+  // Crear o actualizar el perfil en la tabla profiles
+  const { error: profErr } = await sbAdmin.from('profiles').upsert(
+    { id: userId, nombre, email, rol },
+    { onConflict: 'id' }
+  );
+  if (profErr) {
+    if(msg) msg.innerHTML = `<span style="color:var(--danger)">❌ Usuario creado en Auth pero error al crear perfil: ${profErr.message}</span>`;
+    return;
   }
-  toast(`Usuario ${nombre} agregado`, 'success');
-  setTimeout(() => renderUsuarios(document.getElementById('main-body')), 2000);
+
+  if(msg) msg.innerHTML = `<span style="color:#16A34A">✅ Usuario <strong>${escHtml(nombre)}</strong> creado. Puede ingresar con:<br><strong>${escHtml(email)}</strong> / <code>${escHtml(pass)}</code></span>`;
+  toast(`Usuario ${nombre} agregado ✅`, 'success');
+
+  // Limpiar campos
+  ['inv-nombre','inv-email','inv-pass'].forEach(id => { const el = document.getElementById(id); if(el) el.value=''; });
+  document.getElementById('inv-rol').value = 'viewer';
+
+  setTimeout(() => renderUsuarios(document.getElementById('main-body')), 2200);
+}
+
+// Busca un usuario existente en Auth por email (usando admin API) y crea/actualiza su perfil
+async function syncSingleUser(email, nombre, rol, msg) {
+  // Listamos usuarios y buscamos por email
+  const { data: listData, error: listErr } = await sbAdmin.auth.admin.listUsers({ perPage: 1000 });
+  if (listErr) {
+    if(msg) msg.innerHTML = `<span style="color:var(--danger)">❌ No se pudo listar usuarios: ${listErr.message}</span>`;
+    return;
+  }
+  const found = (listData?.users || []).find(u => u.email?.toLowerCase() === email.toLowerCase());
+  if (!found) {
+    if(msg) msg.innerHTML = `<span style="color:var(--danger)">❌ No se encontró el usuario en el sistema.</span>`;
+    return;
+  }
+  const { error: profErr } = await sbAdmin.from('profiles').upsert(
+    { id: found.id, nombre: nombre || found.user_metadata?.nombre || email.split('@')[0], email: found.email, rol },
+    { onConflict: 'id' }
+  );
+  if (profErr) {
+    if(msg) msg.innerHTML = `<span style="color:var(--danger)">❌ Error al crear perfil: ${profErr.message}</span>`;
+    return;
+  }
+  if(msg) msg.innerHTML = `<span style="color:#16A34A">✅ Perfil sincronizado para <strong>${escHtml(email)}</strong>. El usuario ya puede ingresar.</span>`;
+  toast('Perfil sincronizado ✅', 'success');
+  setTimeout(() => renderUsuarios(document.getElementById('main-body')), 1800);
+}
+
+// Sincroniza TODOS los usuarios de Auth que no tienen perfil todavía
+async function syncAllAuthUsers() {
+  const msg = document.getElementById('inv-msg');
+  if(msg) msg.innerHTML = '<span style="color:var(--muted)">⏳ Sincronizando usuarios...</span>';
+
+  const [listRes, profRes] = await Promise.all([
+    sbAdmin.auth.admin.listUsers({ perPage: 1000 }),
+    sbAdmin.from('profiles').select('id')
+  ]);
+  if (listRes.error) { if(msg) msg.innerHTML = `<span style="color:var(--danger)">❌ ${listRes.error.message}</span>`; return; }
+
+  const profileIds = new Set((profRes.data || []).map(p => p.id));
+  const orphans = (listRes.data?.users || []).filter(u => !profileIds.has(u.id));
+
+  if (orphans.length === 0) {
+    if(msg) msg.innerHTML = '<span style="color:#16A34A">✅ Todos los usuarios ya tienen perfil.</span>';
+    return;
+  }
+
+  let created = 0;
+  for (const u of orphans) {
+    const nombre = u.user_metadata?.nombre || u.email?.split('@')[0] || 'Sin nombre';
+    await sbAdmin.from('profiles').upsert(
+      { id: u.id, nombre, email: u.email, rol: 'viewer' },
+      { onConflict: 'id' }
+    );
+    created++;
+  }
+  if(msg) msg.innerHTML = `<span style="color:#16A34A">✅ Se sincronizaron <strong>${created}</strong> usuario(s) sin perfil.</span>`;
+  toast(`${created} usuario(s) sincronizados`, 'success');
+  setTimeout(() => renderUsuarios(document.getElementById('main-body')), 1800);
+}
+
+async function deleteUser(userId, nombre) {
+  if (!confirm(`¿Eliminár a ${nombre}? Esta acción no se puede deshacer.`)) return;
+  await sbAdmin.auth.admin.deleteUser(userId);
+  await sbAdmin.from('profiles').delete().eq('id', userId);
+  toast(`Usuario ${nombre} eliminado`, 'success');
+  renderUsuarios(document.getElementById('main-body'));
 }
 
 async function updateRol(userId, rol) {
-  await sb.from('profiles').update({ rol }).eq('id', userId);
-  toast('Rol actualizado', 'success');
+  await sbAdmin.from('profiles').update({ rol }).eq('id', userId);
+  toast('Rol actualizado ✅', 'success');
 }
 
 // ── COMODATO ─────────────────────────────────────────────────────────────────
