@@ -2320,21 +2320,36 @@ function renderCargaMasiva(body) {
   body.innerHTML = `
     <div class="card" style="max-width: 600px; margin: 0 auto; padding: 30px; text-align: center; margin-top: 20px;">
       <div style="font-size:40px; margin-bottom: 10px;">📊</div>
-      <h2 style="margin-bottom: 10px;">Subir Excel de Líneas Claro</h2>
+      <h2 style="margin-bottom: 10px;">Carga Masiva de Líneas</h2>
       <p style="color:var(--muted); font-size: 13px; margin-bottom: 20px;">
-        Subí el archivo <b>.xlsx</b> (template de Claro con las solapas NOA, CUYO-SUR, etc.) para actualizar o agregar los dispositivos al sistema automáticamente.
+        Subí el archivo <b>.xlsx</b> (template de Claro) o el <b>.csv</b> (template del sistema) para actualizar o agregar dispositivos automáticamente.
       </p>
       
       <div style="border: 2px dashed var(--border); padding: 30px; border-radius: 12px; cursor: pointer; transition: all 0.2s;" id="drop-zone" onclick="document.getElementById('excel-input').click()">
         <div style="color: var(--primary); font-weight: 600; font-size: 15px;">Haz clic o arrastra el archivo aquí</div>
-        <div style="font-size: 12px; color: var(--muted); margin-top: 5px;">Formato .xlsx soportado</div>
+        <div style="font-size: 12px; color: var(--muted); margin-top: 5px;">Formatos soportados: .xlsx, .csv</div>
       </div>
-      <input type="file" id="excel-input" accept=".xlsx" style="display:none" onchange="procesarExcelMasivo(this)">
+      <input type="file" id="excel-input" accept=".xlsx, .csv" style="display:none" onchange="handleCargaMasivaUpload(this)">
       
       <div id="excel-log" style="margin-top: 20px; font-size: 12px; color: var(--text); text-align: left; background: var(--bg); padding: 15px; border-radius: 8px; display: none; max-height: 200px; overflow-y: auto;">
       </div>
     </div>
   `;
+}
+
+function handleCargaMasivaUpload(input) {
+  const file = input.files[0];
+  if (!file) return;
+  if (file.name.toLowerCase().endsWith('.csv')) {
+    const logEl = document.getElementById('excel-log');
+    logEl.style.display = 'block';
+    logEl.innerHTML = '<div style="margin-bottom: 4px;">⏳ Procesando CSV de sistema...</div>';
+    importCSV(input).then(() => {
+      logEl.innerHTML += '<div style="margin-bottom: 4px;">✅ Proceso CSV finalizado.</div>';
+    });
+  } else {
+    procesarExcelMasivo(input);
+  }
 }
 
 async function procesarExcelMasivo(input) {
