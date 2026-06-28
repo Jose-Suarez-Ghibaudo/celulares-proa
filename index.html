@@ -196,6 +196,7 @@ tbody tr:hover td{background:#FAFAFA;cursor:pointer}
     <div class="nav-item" data-page="senales" onclick="navigate('senales')"><span class="ic">📡</span>Señal activa</div>
     <div class="nav-item" data-page="facturacion" onclick="navigate('facturacion')"><span class="ic">💰</span>Facturación</div>
     <div class="nav-item" data-page="cargamasiva" onclick="navigate('cargamasiva')"><span class="ic">📤</span>Carga Masiva</div>
+    <div class="nav-item" data-page="pecheras" onclick="navigate('pecheras')"><span class="ic">🦺</span>Pecheras</div>
     <div class="nav-item" data-page="usuarios" id="nav-usuarios" style="display:none" onclick="navigate('usuarios')"><span class="ic">👥</span>Usuarios</div>
   </div>
   <div class="sb-footer" style="display:flex;flex-direction:column;gap:6px">
@@ -393,7 +394,7 @@ function hideLogin() {
 
 // ── State ───────────────────────────────────────────────────────────────────
 const S = {
-  page: 'dashboard', devices: [], movements: [], cityCoords: {}, heartbeats: {},
+  page: 'dashboard', devices: [], movements: [], cityCoords: {}, heartbeats: {}, pecheras: [],
   loading: true, regionFilter: 'Todos', estadoFilter: 'Todos', search: '',
   selected: null, drawerTab: 'detail', leafMap: null, invMode: 'todos',
   factParsed: null, facturas: [], factTab: 'todas'
@@ -417,14 +418,16 @@ const PLANES = {
 const REGIONES = ['CABA','GBA','BUENOS AIRES','CENTRO','CUYO','LITORAL','NEA','NOA','PATAGONIA','OPERACIONES'];
 const AREAS = ['ADM','HR','DD','DATOS','SELECCION','DIRECCION'];
 const MARCAS = ['SAMSUNG','LG','MOTOROLA','APPLE','XIAOMI'];
+const OSC_LIST = ['UNICEF', 'Amnistia', 'TECHO', 'Banco de Alimentos Cordoba', 'AMAP'];
 
 // ── Load ─────────────────────────────────────────────────────────────────────
 async function loadAll() {
-  const [dr, mr, cr, hr] = await Promise.all([
+  const [dr, mr, cr, hr, pr] = await Promise.all([
     sb.from('devices').select('*').order('region').order('numero_linea'),
     sb.from('movements').select('*').order('created_at', { ascending: false }).limit(300),
     sb.from('city_coords').select('*'),
     sb.from('heartbeats').select('device_id,lat,lng,battery,created_at').order('created_at', { ascending: false }).limit(500),
+    sb.from('pecheras_stock').select('*').order('region').order('ciudad').order('osc')
   ]);
   S.devices   = dr.data || [];
   S.movements = mr.data || [];
@@ -432,18 +435,21 @@ async function loadAll() {
   (cr.data || []).forEach(c => S.cityCoords[c.ciudad] = [c.lat, c.lng]);
   S.heartbeats = {};
   (hr.data || []).forEach(h => { if (!S.heartbeats[h.device_id]) S.heartbeats[h.device_id] = h; });
+  S.pecheras = pr?.data || [];
   S.loading = false;
   render();
   renderNotifPanel();
 }
 
 async function reloadData() {
-  const [dr, mr] = await Promise.all([
+  const [dr, mr, pr] = await Promise.all([
     sb.from('devices').select('*').order('region').order('numero_linea'),
     sb.from('movements').select('*').order('created_at', { ascending: false }).limit(300),
+    sb.from('pecheras_stock').select('*').order('region').order('ciudad').order('osc')
   ]);
   S.devices   = dr.data || [];
   S.movements = mr.data || [];
+  S.pecheras  = pr?.data || [];
 }
 
 // ── Navigate ─────────────────────────────────────────────────────────────────
@@ -465,6 +471,7 @@ const PAGE_META = {
   senales:    ['Señal activa', 'Control diario de actividad de los dispositivos. 🟢 Con señal · 🔵 Sin señal GPS (ciudad asignada) · ⚪ Sin señal'],
   facturacion:['Facturación', 'Análisis de gasto por línea. Subí la factura de Claro para detectar excedentes.'],
   cargamasiva:['Carga Masiva', 'Sincronizar y actualizar base de datos subiendo el archivo CSV (template del sistema).'],
+  pecheras:   ['Pecheras',    'Control de stock de ropa de trabajo y cantidad de personas por OSC.'],
   usuarios:   ['Usuarios',    'Gestión de accesos y roles.'],
 };
 
@@ -477,7 +484,11 @@ function render() {
   ({ dashboard: renderDash, inventario: renderInv, sinasignar: renderSinAsignar,
      movimientos: renderMovimientos, mapa: renderMapa, senales: renderSenales,
      facturacion: renderFacturacion, cargamasiva: renderCargaMasiva,
-     usuarios: renderUsuarios })[S.page]?.(body);
+     usuarios: renderUsuarios, pecheras: renderPecheras })[S.page]?.(body);
+}
+
+function formatLinea(x) {
+  return x.numero_linea ? x.numero_linea : ('SIN LÍNEA' + (x.imei ? ' - ' + x.imei : ''));
 }
 
 // ── DASHBOARD ────────────────────────────────────────────────────────────────
@@ -538,7 +549,7 @@ function renderDash(body) {
             <div class="att-item" onclick="openDrawer('${x.id}')">
               <div class="att-av">📱</div>
               <div style="flex:1">
-                <div class="att-name">${x.numero_linea}</div>
+                <div class="att-name">${formatLinea(x)}</div>
                 <div class="att-sub">${x.responsable||'Sin responsable'} · ${x.region||'—'}</div>
               </div>
               ${badgeEstado(x.estado)}
@@ -571,7 +582,7 @@ function renderDash(body) {
           ${S.movements.slice(0,6).map(m => `
             <tr>
               <td class="text-muted" style="white-space:nowrap">${fmtDate(m.created_at)}</td>
-              <td class="fw6">${m.numero_linea}</td>
+              <td class="fw6">${formatLinea(m)}</td>
               <td>${badgeTipo(m.tipo)}</td>
               <td class="text-muted">${m.responsable_anterior||'—'}</td>
               <td>${m.responsable_nuevo||'—'}</td>
@@ -666,7 +677,7 @@ function renderInv(body) {
           : d.map(x => {
               const faltantes = incompleteFields(x);
               return `<tr onclick="openDrawer('${x.id}')">
-                <td class="fw6">${x.numero_linea}</td>
+                <td class="fw6">${formatLinea(x)}</td>
                 <td class="text-muted">${x.modelo||'—'}</td>
                 <td>${x.responsable||'<span class="text-danger">Sin asignar</span>'}</td>
                 <td>${x.region||'—'}</td>
@@ -682,7 +693,7 @@ function renderInv(body) {
           ? '<tr><td colspan="7" class="no-data">Sin resultados</td></tr>'
           : d.map(x => `
             <tr onclick="openDrawer('${x.id}')">
-              <td class="fw6">${x.numero_linea}</td>
+              <td class="fw6">${formatLinea(x)}</td>
               <td class="text-muted">${x.modelo||'—'}</td>
               <td>${x.responsable || '<span class="text-danger">Sin asignar</span>'}</td>
               <td class="text-muted">${x.area||'—'}</td>
@@ -708,7 +719,7 @@ function renderSinAsignar(body) {
           ? '<tr><td colspan="6" class="no-data">Todos los dispositivos tienen responsable ✅</td></tr>'
           : d.map(x=>`
             <tr onclick="openDrawer('${x.id}')">
-              <td class="fw6">${x.numero_linea}</td>
+              <td class="fw6">${formatLinea(x)}</td>
               <td class="text-muted">${x.modelo||'—'}</td>
               <td class="text-muted">${x.area||'—'}</td>
               <td>${x.region||'—'}</td>
@@ -734,7 +745,7 @@ function renderMovimientos(body) {
           : m.map(x=>`
             <tr>
               <td class="text-muted" style="white-space:nowrap;font-size:12px">${fmtDate(x.created_at)}</td>
-              <td class="fw6">${x.numero_linea}</td>
+              <td class="fw6">${formatLinea(x)}</td>
               <td>${badgeTipo(x.tipo)}</td>
               <td class="text-muted">${x.responsable_anterior||'—'}</td>
               <td>${x.responsable_nuevo||'—'}</td>
@@ -839,7 +850,7 @@ function openDrawer(id) {
   S.selected = S.devices.find(d => d.id === id);
   if (!S.selected) return;
   S.drawerTab = 'detail';
-  document.getElementById('drw-title').textContent = `Línea ${S.selected.numero_linea}`;
+  document.getElementById('drw-title').textContent = formatLinea(S.selected);
   document.getElementById('drw-sub').innerHTML =
     `${S.selected.responsable||'<span class="text-danger">Sin responsable</span>'} · ${S.selected.region||'—'}`;
   renderDrawer();
@@ -872,7 +883,7 @@ function setDrwTab(t) { S.drawerTab = t; renderDrawer(); }
 
 function drwDetail(d) {
   const fields = [
-    ['Número de línea', d.numero_linea], ['IMEI', d.imei||'—'],
+    ['Número de línea', d.numero_linea || 'SIN LÍNEA'], ['IMEI', d.imei||'—'],
     ['Modelo', d.modelo||'—'],           ['Plan', d.plan||'—'],
     ['Carga de datos', d.carga_datos||'—'], ['Código', d.codigo||'—'],
     ['Responsable', d.responsable||'—'], ['DNI', d.dni_responsable||'—'],
@@ -1060,7 +1071,7 @@ function openModal() {
       </label>
     </div>
     <div class="fg-grid">
-      ${fg('Número de línea *','fi','nl-linea','','ej: 2612052273')}
+      ${fg('Número de línea','fi','nl-linea','','ej: 2612052273 (Opcional si es Solo Equipo)')}
       ${fg('IMEI','fi','nl-imei','','ej: 352031112409031')}
       <div class="fg"><label class="fl">Marca</label>
         <select class="fs" id="nl-marca" onchange="onMarcaChange()">
@@ -1113,14 +1124,16 @@ document.getElementById('modal-wrap').addEventListener('click', e => {
 });
 
 async function saveNew() {
-  const linea = v('nl-linea'); const resp = v('nl-resp');
-  if (!linea) { toast('El número de línea es obligatorio', 'error'); return; }
+  const isSoloEquipo = document.getElementById('nl-sindisp')?.checked ?? false;
+  if (!linea && !isSoloEquipo) { toast('El número de línea es obligatorio si no marcas "Solo equipo"', 'error'); return; }
 
-  const { data: ex } = await sb.from('devices').select('id').eq('numero_linea', linea);
-  if (ex?.length) { toast(`Ya existe un dispositivo con la línea ${linea}`, 'error'); return; }
+  if (linea) {
+    const { data: ex } = await sb.from('devices').select('id').eq('numero_linea', linea);
+    if (ex?.length) { toast(`Ya existe un dispositivo con la línea ${linea}`, 'error'); return; }
+  }
 
   const obj = {
-    numero_linea: linea, imei: v('nl-imei')||null,
+    numero_linea: linea || null, imei: v('nl-imei')||null,
     modelo: [v('nl-marca'), v('nl-modelo')].filter(Boolean).join(' ') || null,
     plan: v('nl-plan')||null, carga_datos: v('nl-datos')||null,
     costo_linea: parseFloat(v('nl-costo'))||null,
@@ -1134,7 +1147,7 @@ async function saveNew() {
   if (error) { toast('Error: ' + error.message, 'error'); return; }
 
   await sb.from('movements').insert({
-    device_id: data[0].id, numero_linea: linea, tipo: 'alta',
+    device_id: data[0].id, numero_linea: linea || 'SIN LÍNEA', tipo: 'alta',
     responsable_nuevo: resp, region_nueva: obj.region, ciudad_nueva: obj.ciudad,
     registrado_por: v('nl-usuario')||null, motivo: 'Alta inicial',
   });
@@ -1306,8 +1319,18 @@ function buildAlerts() {
   if (enRep.length > 0) {
     alerts.push({
       ic: '🔧', title: `${enRep.length} dispositivo(s) en reparación`,
-      sub: enRep.slice(0,3).map(x => `${x.numero_linea} (${x.responsable||'—'})`).join(', '),
+      sub: enRep.slice(0,3).map(x => `${formatLinea(x)} (${x.responsable||'—'})`).join(', '),
       page: 'inventario'
+    });
+  }
+
+  // Pecheras faltantes
+  const faltanPecheras = S.pecheras.filter(p => p.cantidad_personas > p.cantidad_pecheras);
+  if (faltanPecheras.length > 0) {
+    alerts.push({
+      ic: '🦺', title: `Faltan pecheras en ${faltanPecheras.length} lugar(es)`,
+      sub: faltanPecheras.slice(0,3).map(p => `${p.ciudad} (${p.osc}): Faltan ${p.cantidad_personas - p.cantidad_pecheras}`).join(' | '),
+      page: 'pecheras'
     });
   }
 
@@ -2350,6 +2373,169 @@ function handleCargaMasivaUpload(input) {
     logEl.innerHTML += '<div style="margin-bottom: 4px;">✅ Proceso CSV finalizado.</div>';
   });
 }
+
+// ── PECHERAS ─────────────────────────────────────────────────────────────────
+function renderPecheras(body) {
+  const p = S.pecheras;
+  body.innerHTML = `
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+    <div style="font-size:14px;color:var(--muted)">Gestión de stock de pecheras y cantidad de personas por OSC.</div>
+    <button class="btn btn-secondary" onclick="openModalPechera()">+ Registrar Stock</button>
+  </div>
+  <div class="tbl-wrap">
+    <table>
+      <thead>
+        <tr><th>Región</th><th>Ciudad</th><th>OSC</th><th style="text-align:center">Personas</th><th style="text-align:center">Pecheras</th><th>Estado</th></tr>
+      </thead>
+      <tbody>
+        ${p.length === 0 ? '<tr><td colspan="6" class="no-data">Sin registros de pecheras</td></tr>' :
+          p.map(x => {
+            const diff = x.cantidad_pecheras - x.cantidad_personas;
+            let badge = diff < 0 ? '<span class="badge bg-red">Faltan ' + Math.abs(diff) + '</span>' :
+                        diff === 0 ? '<span class="badge bg-green">Justo</span>' :
+                        '<span class="badge bg-blue">Sobran ' + diff + '</span>';
+            return `
+            <tr onclick="openDrawerPechera('${x.id}')" style="cursor:pointer">
+              <td>${x.region}</td>
+              <td class="fw6">${x.ciudad}</td>
+              <td>${x.osc}</td>
+              <td style="text-align:center">${x.cantidad_personas}</td>
+              <td style="text-align:center">${x.cantidad_pecheras}</td>
+              <td>${badge}</td>
+            </tr>`;
+          }).join('')}
+      </tbody>
+    </table>
+  </div>
+  `;
+}
+
+function openModalPechera(id = null) {
+  const p = id ? S.pecheras.find(x => x.id === id) : null;
+  document.getElementById('modal-body').innerHTML = `
+    <div class="fg-grid">
+      <div class="fg"><label class="fl">Región *</label>
+        <select class="fs" id="pch-region" onchange="autoFillCiudad(this.value)">
+          <option value="">— Región —</option>
+          ${REGIONES.map(r=>`<option value="${r}" ${p?.region===r?'selected':''}>${r}</option>`).join('')}
+        </select>
+      </div>
+      ${fg('Ciudad *','fi','pch-ciudad', p?.ciudad||'')}
+      <div class="fg"><label class="fl">OSC *</label>
+        <select class="fs" id="pch-osc-sel" onchange="toggleCustomOSC(this.value)">
+          <option value="">— Seleccionar OSC —</option>
+          ${OSC_LIST.map(o=>`<option value="${o}" ${p?.osc===o?'selected':''}>${o}</option>`).join('')}
+          <option value="OTRA" ${p && !OSC_LIST.includes(p.osc) ? 'selected' : ''}>Otra...</option>
+        </select>
+      </div>
+      <div class="fg" id="pch-osc-custom-fg" style="${p && !OSC_LIST.includes(p.osc) ? '' : 'display:none'}">
+        ${fg('Especificar OSC *','fi','pch-osc-custom', p && !OSC_LIST.includes(p.osc) ? p.osc : '')}
+      </div>
+      ${fg('Cantidad de Personas *','fi','pch-pers', p?.cantidad_personas||'0', '', 'number')}
+      ${fg('Cantidad de Pecheras *','fi','pch-pech', p?.cantidad_pecheras||'0', '', 'number')}
+      <div class="fg fg-full"><label class="fl">Comentarios</label><textarea class="ft" id="pch-coment">${p?.comentarios||''}</textarea></div>
+    </div>
+  `;
+  document.getElementById('modal-wrap').classList.add('open');
+  // Store id if editing
+  document.getElementById('modal-wrap').dataset.editPecheraId = id || '';
+  document.querySelector('#modal-wrap .btn-primary').onclick = savePechera;
+}
+
+function autoFillCiudad(reg) {
+  if(reg && !v('pch-ciudad')) document.getElementById('pch-ciudad').value = reg;
+}
+
+function toggleCustomOSC(val) {
+  document.getElementById('pch-osc-custom-fg').style.display = val === 'OTRA' ? 'block' : 'none';
+}
+
+async function savePechera() {
+  const region = v('pch-region');
+  const ciudad = v('pch-ciudad');
+  let osc = v('pch-osc-sel');
+  if (osc === 'OTRA') osc = v('pch-osc-custom');
+  
+  if (!region || !ciudad || !osc) { toast('Región, ciudad y OSC son obligatorios', 'error'); return; }
+  
+  const obj = {
+    region, ciudad, osc,
+    cantidad_personas: parseInt(v('pch-pers')||'0', 10),
+    cantidad_pecheras: parseInt(v('pch-pech')||'0', 10),
+    comentarios: v('pch-coment') || null
+  };
+
+  const id = document.getElementById('modal-wrap').dataset.editPecheraId;
+  
+  let error;
+  if (id) {
+    const res = await sb.from('pecheras_stock').update(obj).eq('id', id);
+    error = res.error;
+  } else {
+    const res = await sb.from('pecheras_stock').insert(obj);
+    error = res.error;
+  }
+
+  if (error) { toast('Error: ' + error.message, 'error'); return; }
+  
+  toast(id ? 'Stock de pechera actualizado' : 'Stock registrado', 'success');
+  closeModal();
+  if(id) closeDrawer();
+  await reloadData();
+  render();
+}
+
+function openDrawerPechera(id) {
+  const p = S.pecheras.find(x => x.id === id);
+  if (!p) return;
+  document.getElementById('drw-title').textContent = `${p.ciudad} - ${p.osc}`;
+  document.getElementById('drw-sub').textContent = p.region;
+  
+  const diff = p.cantidad_pecheras - p.cantidad_personas;
+  let status = diff < 0 ? `<span style="color:var(--danger)">⚠️ Faltan ${Math.abs(diff)} pecheras</span>` :
+               diff === 0 ? `<span style="color:#16A34A">✅ Stock justo</span>` :
+               `<span style="color:var(--primary)">ℹ️ Sobran ${diff} pecheras</span>`;
+
+  document.getElementById('drw-body').innerHTML = `
+    <div style="padding:22px">
+      <div style="background:var(--bg);padding:14px;border-radius:8px;margin-bottom:20px;text-align:center">
+        <div style="font-size:24px;font-weight:700;color:var(--text)">
+          ${p.cantidad_personas} <span style="font-size:12px;color:var(--muted);font-weight:500">Personas</span>
+          &nbsp;&nbsp;&nbsp;|&nbsp;&nbsp;&nbsp;
+          ${p.cantidad_pecheras} <span style="font-size:12px;color:var(--muted);font-weight:500">Pecheras</span>
+        </div>
+        <div style="margin-top:10px;font-size:13px;font-weight:600">${status}</div>
+      </div>
+      
+      <div class="detail-grid" style="margin-bottom:20px">
+        <div class="detail-field"><div class="dl">Región</div><div class="dv">${p.region}</div></div>
+        <div class="detail-field"><div class="dl">Ciudad</div><div class="dv">${p.ciudad}</div></div>
+        <div class="detail-field"><div class="dl">OSC</div><div class="dv">${p.osc}</div></div>
+        <div class="detail-field"><div class="dl">Última act.</div><div class="dv">${fmtDate(p.updated_at)}</div></div>
+      </div>
+      
+      ${p.comentarios ? `<div style="font-size:13px;color:var(--muted);background:var(--bg);padding:10px;border-radius:8px;margin-bottom:20px"><b>Comentarios:</b><br>${escHtml(p.comentarios)}</div>` : ''}
+      
+      <div style="display:flex;gap:10px;margin-top:30px">
+        <button class="btn btn-secondary" style="flex:1" onclick="openModalPechera('${p.id}')">✏️ Editar Stock</button>
+        <button class="btn" style="background:#FEE2E2;color:#EF4444;flex:1" onclick="deletePechera('${p.id}')">🗑️ Eliminar</button>
+      </div>
+    </div>
+  `;
+  document.getElementById('drawer').classList.add('open');
+  document.getElementById('overlay').classList.add('open');
+}
+
+async function deletePechera(id) {
+  if (!confirm('¿Seguro que deseas eliminar este registro de pecheras?')) return;
+  const { error } = await sb.from('pecheras_stock').delete().eq('id', id);
+  if (error) { toast('Error: ' + error.message, 'error'); return; }
+  toast('Registro eliminado', 'success');
+  closeDrawer();
+  await reloadData();
+  render();
+}
+
 
 // ── Init ─────────────────────────────────────────────────────────────────────
 checkAuth();
