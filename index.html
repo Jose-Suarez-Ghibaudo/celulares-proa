@@ -178,7 +178,6 @@ tbody tr:hover td{background:#FAFAFA;cursor:pointer}
 .fw6{font-weight:600}
 .gap-row{display:flex;gap:16px}
 </style>
-<script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
 </head>
 <body>
 
@@ -465,7 +464,7 @@ const PAGE_META = {
   mapa:       ['Mapa',        'Ubicación geográfica de los dispositivos.'],
   senales:    ['Señal activa', 'Control diario de actividad de los dispositivos. 🟢 Con señal · 🔵 Sin señal GPS (ciudad asignada) · ⚪ Sin señal'],
   facturacion:['Facturación', 'Análisis de gasto por línea. Subí la factura de Claro para detectar excedentes.'],
-  cargamasiva:['Carga Masiva', 'Sincronizar y actualizar base de datos subiendo el archivo original de Claro (Excel).'],
+  cargamasiva:['Carga Masiva', 'Sincronizar y actualizar base de datos subiendo el archivo CSV (template del sistema).'],
   usuarios:   ['Usuarios',    'Gestión de accesos y roles.'],
 };
 
@@ -2315,21 +2314,21 @@ async function importCSV(input) {
   render();
 }
 
-// ── CARGA MASIVA EXCEL ───────────────────────────────────────────────────────
+// ── CARGA MASIVA ─────────────────────────────────────────────────────────────
 function renderCargaMasiva(body) {
   body.innerHTML = `
     <div class="card" style="max-width: 600px; margin: 0 auto; padding: 30px; text-align: center; margin-top: 20px;">
       <div style="font-size:40px; margin-bottom: 10px;">📊</div>
       <h2 style="margin-bottom: 10px;">Carga Masiva de Líneas</h2>
       <p style="color:var(--muted); font-size: 13px; margin-bottom: 20px;">
-        Subí el archivo <b>.xlsx</b> (template de Claro) o el <b>.csv</b> (template del sistema) para actualizar o agregar dispositivos automáticamente.
+        Subí el archivo <b>.csv</b> (template del sistema descargado desde Inventario) para actualizar o agregar dispositivos automáticamente.
       </p>
       
       <div style="border: 2px dashed var(--border); padding: 30px; border-radius: 12px; cursor: pointer; transition: all 0.2s;" id="drop-zone" onclick="document.getElementById('excel-input').click()">
         <div style="color: var(--primary); font-weight: 600; font-size: 15px;">Haz clic o arrastra el archivo aquí</div>
-        <div style="font-size: 12px; color: var(--muted); margin-top: 5px;">Formatos soportados: .xlsx, .csv</div>
+        <div style="font-size: 12px; color: var(--muted); margin-top: 5px;">Formato soportado: .csv</div>
       </div>
-      <input type="file" id="excel-input" accept=".xlsx, .csv" style="display:none" onchange="handleCargaMasivaUpload(this)">
+      <input type="file" id="excel-input" accept=".csv" style="display:none" onchange="handleCargaMasivaUpload(this)">
       
       <div id="excel-log" style="margin-top: 20px; font-size: 12px; color: var(--text); text-align: left; background: var(--bg); padding: 15px; border-radius: 8px; display: none; max-height: 200px; overflow-y: auto;">
       </div>
@@ -2340,164 +2339,12 @@ function renderCargaMasiva(body) {
 function handleCargaMasivaUpload(input) {
   const file = input.files[0];
   if (!file) return;
-  if (file.name.toLowerCase().endsWith('.csv')) {
-    const logEl = document.getElementById('excel-log');
-    logEl.style.display = 'block';
-    logEl.innerHTML = '<div style="margin-bottom: 4px;">⏳ Procesando CSV de sistema...</div>';
-    importCSV(input).then(() => {
-      logEl.innerHTML += '<div style="margin-bottom: 4px;">✅ Proceso CSV finalizado.</div>';
-    });
-  } else {
-    procesarExcelMasivo(input);
-  }
-}
-
-async function procesarExcelMasivo(input) {
-  const file = input.files[0];
-  if (!file) return;
-  
   const logEl = document.getElementById('excel-log');
   logEl.style.display = 'block';
-  logEl.innerHTML = '';
-  const log = (msg) => { logEl.innerHTML += `<div style="margin-bottom: 4px;">${msg}</div>`; logEl.scrollTop = logEl.scrollHeight; };
-  
-  log('⏳ Leyendo archivo <b>' + file.name + '</b>...');
-  
-  const reader = new FileReader();
-  reader.onload = async (e) => {
-    try {
-      const data = new Uint8Array(e.target.result);
-      const workbook = XLSX.read(data, {type: 'array'});
-      
-      const REGIONAL_SHEETS = {
-        "NOA":      ["_skip", "orden", "area", "responsable", "dni_responsable", "numero_linea", "detalle", "carga_datos", "modelo", "codigo"],
-        "CUYO-SUR": ["_skip", "orden", "area", "responsable", "dni_responsable", "numero_linea", "carga_datos", "modelo", "codigo", "imei"],
-        "LITORAL":  ["_skip", "orden", "area", "responsable", "dni_responsable", "numero_linea", "carga_datos", "modelo", "codigo", "imei"],
-        "CABA":     ["_skip", "orden", "area", "responsable", "dni_responsable", "numero_linea", "detalle", "carga_datos", "modelo", "codigo"],
-        "OPERACIONES": ["_skip", "orden", "area", "responsable", "dni_responsable", "numero_linea", "carga_datos", "modelo", "codigo", "imei"],
-      };
-
-      const REGION_MAP = { "NOA":"NOA", "CUYO-SUR":"CUYO", "LITORAL":"LITORAL", "CABA":"CABA", "OPERACIONES":"OPERACIONES" };
-      const CITY_DEFAULTS = { "NOA":"NOA", "CUYO-SUR":"MENDOZA", "LITORAL":"SANTA FE", "CABA":"BUENOS AIRES", "OPERACIONES":"OPERACIONES" };
-
-      const clean = (val) => {
-        if (val == null) return null;
-        const s = String(val).trim();
-        return (s && !['none','nan','sin equipo'].includes(s.toLowerCase())) ? s : null;
-      };
-      
-      const cleanPhone = (val) => {
-        if (val == null) return null;
-        let s = String(val).trim().replace(/ /g, '').replace(/-/g, '');
-        if (!isNaN(parseFloat(s))) return String(parseInt(parseFloat(s), 10));
-        return s || null;
-      };
-
-      log('📋 Analizando Hoja 1 (Planes y costos)...');
-      const mainInfo = {};
-      if (workbook.SheetNames.includes("Hoja 1")) {
-        const sheet = workbook.Sheets["Hoja 1"];
-        const json = XLSX.utils.sheet_to_json(sheet, {header: 1});
-        for (let i = 1; i < json.length; i++) {
-          const row = json[i];
-          if (!row || row.length < 12) continue;
-          const linea = cleanPhone(row[2]);
-          if (linea) {
-            mainInfo[linea] = {
-              plan: clean(row[3]),
-              costo_linea: typeof row[5] === 'number' ? row[5] : null,
-            };
-          }
-        }
-      }
-      
-      let devices = [];
-      
-      for (const sheetName of Object.keys(REGIONAL_SHEETS)) {
-        if (!workbook.SheetNames.includes(sheetName)) {
-          log('⚠️ Hoja ' + sheetName + ' no encontrada, saltando.');
-          continue;
-        }
-        log('📂 Leyendo hoja ' + sheetName + '...');
-        const colMap = REGIONAL_SHEETS[sheetName];
-        const sheet = workbook.Sheets[sheetName];
-        const json = XLSX.utils.sheet_to_json(sheet, {header: 1});
-        
-        const region = REGION_MAP[sheetName];
-        const ciudad = CITY_DEFAULTS[sheetName];
-        
-        for (let i = 1; i < json.length; i++) {
-          const row = json[i];
-          if (!row || row.length === 0) continue;
-          
-          let dataObj = {};
-          for (let j = 0; j < colMap.length; j++) {
-            if (colMap[j] === '_skip') continue;
-            dataObj[colMap[j]] = row[j];
-          }
-          
-          const linea = cleanPhone(dataObj.numero_linea);
-          if (!linea) continue;
-          
-          devices.push({
-            numero_linea: linea,
-            imei: cleanPhone(dataObj.imei),
-            modelo: clean(dataObj.modelo),
-            carga_datos: clean(dataObj.carga_datos),
-            codigo: clean(dataObj.codigo),
-            responsable: clean(dataObj.responsable),
-            dni_responsable: clean(dataObj.dni_responsable),
-            area: clean(dataObj.area),
-            region: region,
-            ciudad: ciudad,
-            estado: 'activo',
-            plan: (mainInfo[linea] ? mainInfo[linea].plan : null),
-            costo_linea: (mainInfo[linea] ? mainInfo[linea].costo_linea : null)
-          });
-        }
-      }
-      
-      const uniqueDevicesMap = {};
-      devices.forEach(d => uniqueDevicesMap[d.numero_linea] = d);
-      const devicesList = Object.values(uniqueDevicesMap);
-      
-      if (devicesList.length === 0) {
-        log('❌ No se encontraron líneas válidas en el archivo.');
-        return;
-      }
-      
-      log('✅ Total dispositivos únicos a procesar: <b>' + devicesList.length + '</b>');
-      log('🚀 Subiendo a Supabase en lotes de a 50...');
-      
-      let inserted = 0;
-      let errCount = 0;
-      for (let i = 0; i < devicesList.length; i += 50) {
-        const batch = devicesList.slice(i, i + 50);
-        const { error } = await sb.from('devices').upsert(batch, { onConflict: 'numero_linea' });
-        if (error) {
-          log('❌ Error en lote: ' + error.message);
-          errCount++;
-        } else {
-          inserted += batch.length;
-          log('⬆️ Importados ' + inserted + ' / ' + devicesList.length);
-        }
-      }
-      
-      log('<br>🎉 <b>¡Carga completa!</b> Insertados/Actualizados: ' + inserted + ', Errores: ' + errCount);
-      toast('Carga masiva completa', errCount === 0 ? 'success' : 'warning');
-      
-      setTimeout(() => {
-        reloadData().then(render);
-      }, 2000);
-
-    } catch (err) {
-      log('❌ Ocurrió un error inesperado: ' + err.message);
-      console.error(err);
-    } finally {
-      input.value = '';
-    }
-  };
-  reader.readAsArrayBuffer(file);
+  logEl.innerHTML = '<div style="margin-bottom: 4px;">⏳ Procesando CSV de sistema...</div>';
+  importCSV(input).then(() => {
+    logEl.innerHTML += '<div style="margin-bottom: 4px;">✅ Proceso CSV finalizado.</div>';
+  });
 }
 
 // ── Init ─────────────────────────────────────────────────────────────────────
