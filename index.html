@@ -11,7 +11,18 @@
   --success:#22C55E; --warning:#F59E0B; --danger:#EF4444; --info:#3B82F6;
   --bg:#F8FAFC; --card:#fff; --border:#E2E8F0;
   --text:#1E293B; --muted:#64748B;
+  --th-bg:#FAFAFA;
   --sidebar-w:240px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --primary:#6366F1; --primary-light:#312E81; --primary-dark:#818CF8;
+    --success:#22C55E; --warning:#FBBF24; --danger:#F87171; --info:#60A5FA;
+    --bg:#0F172A; --card:#1E293B; --border:#334155;
+    --text:#F8FAFC; --muted:#94A3B8;
+    --th-bg:#1E293B;
+  }
 }
 
 /* ── Notif bell ── */
@@ -61,7 +72,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 /* ── Buttons ── */
 .btn{display:inline-flex;align-items:center;gap:6px;padding:8px 16px;border-radius:8px;font-size:13px;font-weight:500;cursor:pointer;border:none;transition:all .15s}
 .btn-primary{background:var(--primary);color:#fff}.btn-primary:hover{background:var(--primary-dark)}
-.btn-secondary{background:#fff;color:var(--text);border:1px solid var(--border)}.btn-secondary:hover{background:var(--bg)}
+.btn-secondary{background:var(--card);color:var(--text);border:1px solid var(--border)}.btn-secondary:hover{background:var(--bg)}
 .btn-full{width:100%;justify-content:center}
 
 /* ── KPI grid ── */
@@ -96,17 +107,17 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 .search-inp{padding:7px 10px 7px 30px;border:1px solid var(--border);border-radius:8px;font-size:13px;width:260px;outline:none;background:var(--bg)}
 .search-inp:focus{border-color:var(--primary)}
 table{width:100%;border-collapse:collapse}
-th{padding:9px 14px;text-align:left;font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;border-bottom:1px solid var(--border);background:#FAFAFA;white-space:nowrap}
+th{padding:9px 14px;text-align:left;font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;border-bottom:1px solid var(--border);background:var(--th-bg);white-space:nowrap}
 td{padding:11px 14px;font-size:13px;border-bottom:1px solid var(--border)}
 tr:last-child td{border-bottom:none}
-tbody tr:hover td{background:#FAFAFA;cursor:pointer}
+tbody tr:hover td{background:var(--th-bg);cursor:pointer}
 .no-data{text-align:center;padding:44px;color:var(--muted);font-size:13px}
 
 /* ── Attention list ── */
 .att-item{display:flex;align-items:center;padding:13px 18px;border-bottom:1px solid var(--border);gap:12px;cursor:pointer;transition:background .1s}
 .att-item:last-child{border-bottom:none}
-.att-item:hover{background:#FAFAFA}
-.att-av{width:34px;height:34px;border-radius:50%;background:#EEF2FF;display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0}
+.att-item:hover{background:var(--th-bg)}
+.att-av{width:34px;height:34px;border-radius:50%;background:var(--primary-light);display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0}
 .att-name{font-size:13px;font-weight:600}
 .att-sub{font-size:11px;color:var(--muted);margin-top:1px}
 
@@ -137,7 +148,7 @@ tbody tr:hover td{background:#FAFAFA;cursor:pointer}
 .fg-grid{display:grid;grid-template-columns:1fr 1fr;gap:0 16px}
 .fg-full{grid-column:1/-1}
 .fl{font-size:11px;font-weight:600;color:var(--muted)}
-.fi,.fs,.ft{padding:8px 10px;border:1px solid var(--border);border-radius:8px;font-size:13px;outline:none;background:#fff;width:100%;font-family:inherit}
+.fi,.fs,.ft{padding:8px 10px;border:1px solid var(--border);border-radius:8px;font-size:13px;outline:none;background:var(--bg);width:100%;font-family:inherit}
 .fi:focus,.fs:focus,.ft:focus{border-color:var(--primary)}
 .ft{resize:vertical;min-height:70px}
 
@@ -171,7 +182,7 @@ tbody tr:hover td{background:#FAFAFA;cursor:pointer}
 .t-date{font-size:11px;color:var(--muted)}
 .t-detail{font-size:12px;color:var(--muted);margin-top:2px}
 
-.select-sm{padding:6px 10px;border:1px solid var(--border);border-radius:8px;font-size:12px;outline:none;background:#fff;cursor:pointer}
+.select-sm{padding:6px 10px;border:1px solid var(--border);border-radius:8px;font-size:12px;outline:none;background:var(--card);color:var(--text);cursor:pointer}
 .divider{border:none;border-top:1px solid var(--border);margin:16px 0}
 .text-muted{color:var(--muted)}
 .text-danger{color:var(--danger)}
@@ -200,9 +211,9 @@ tbody tr:hover td{background:#FAFAFA;cursor:pointer}
     <div class="nav-item" data-page="usuarios" id="nav-usuarios" style="display:none" onclick="navigate('usuarios')"><span class="ic">👥</span>Usuarios</div>
   </div>
   <div class="sb-footer" style="display:flex;flex-direction:column;gap:6px">
-    <div id="sb-user-name" style="font-weight:600;color:#1E293B;font-size:12px"></div>
+    <div id="sb-user-name" style="font-weight:600;color:var(--text);font-size:12px"></div>
     <div id="sb-user-email" style="font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></div>
-    <button onclick="doLogout()" style="background:none;border:none;color:#EF4444;font-size:11px;cursor:pointer;text-align:left;padding:0;margin-top:2px">Cerrar sesión</button>
+    <button onclick="doLogout()" style="background:none;border:none;color:var(--danger);font-size:11px;cursor:pointer;text-align:left;padding:0;margin-top:2px">Cerrar sesión</button>
   </div>
 </nav>
 
@@ -271,32 +282,32 @@ tbody tr:hover td{background:#FAFAFA;cursor:pointer}
 <div class="toast" id="toast"></div>
 
 <!-- ═══ LOGIN SCREEN ═══ -->
-<div id="login-screen" style="display:none;position:fixed;inset:0;background:#F8FAFC;z-index:1000;display:flex;align-items:center;justify-content:center">
-  <div style="background:#fff;border:1px solid #E2E8F0;border-radius:16px;padding:40px;width:100%;max-width:380px;box-shadow:0 8px 24px rgba(0,0,0,.08)">
+<div id="login-screen" style="display:none;position:fixed;inset:0;background:var(--bg);z-index:1000;display:flex;align-items:center;justify-content:center">
+  <div style="background:var(--card);border:1px solid var(--border);border-radius:16px;padding:40px;width:100%;max-width:380px;box-shadow:0 8px 24px rgba(0,0,0,.08)">
     <div style="text-align:center;margin-bottom:28px">
       <div style="font-size:36px;margin-bottom:8px">📱</div>
-      <div style="font-size:20px;font-weight:700;color:#1E293B">Celulares PROA</div>
-      <div style="font-size:13px;color:#64748B;margin-top:4px">Ingresá con tu email corporativo</div>
+      <div style="font-size:20px;font-weight:700;color:var(--text)">Celulares PROA</div>
+      <div style="font-size:13px;color:var(--muted);margin-top:4px">Ingresá con tu email corporativo</div>
     </div>
     <div id="login-form">
       <input id="login-email" type="email" placeholder="Email" autocomplete="email"
         oninput="clearLoginErr()"
-        style="width:100%;padding:11px 14px;border:1px solid #E2E8F0;border-radius:10px;font-size:14px;margin-bottom:10px;outline:none;box-sizing:border-box"/>
+        style="width:100%;padding:11px 14px;background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:10px;font-size:14px;margin-bottom:10px;outline:none;box-sizing:border-box"/>
       <div style="position:relative;margin-bottom:16px">
         <input id="login-pass" type="password" placeholder="Contraseña" autocomplete="current-password"
           oninput="clearLoginErr()"
           onkeydown="if(event.key==='Enter')doLogin()"
-          style="width:100%;padding:11px 44px 11px 14px;border:1px solid #E2E8F0;border-radius:10px;font-size:14px;outline:none;box-sizing:border-box"/>
+          style="width:100%;padding:11px 44px 11px 14px;background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:10px;font-size:14px;outline:none;box-sizing:border-box"/>
         <button type="button" onclick="togglePassVis()" tabindex="-1"
-          style="position:absolute;right:12px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;padding:4px;color:#94A3B8;font-size:18px;line-height:1"
+          style="position:absolute;right:12px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;padding:4px;color:var(--muted);font-size:18px;line-height:1"
           title="Mostrar / ocultar contraseña">
           <span id="eye-icon">👁</span>
         </button>
       </div>
-      <button id="login-btn" onclick="doLogin()" style="width:100%;padding:12px;background:#4F46E5;color:#fff;border:none;border-radius:10px;font-size:15px;font-weight:600;cursor:pointer">
+      <button id="login-btn" onclick="doLogin()" style="width:100%;padding:12px;background:var(--primary);color:#fff;border:none;border-radius:10px;font-size:15px;font-weight:600;cursor:pointer">
         Ingresar
       </button>
-      <p id="login-error" style="color:#EF4444;font-size:13px;text-align:center;margin-top:12px;display:none;background:#FEF2F2;border:1px solid #FECACA;border-radius:8px;padding:8px 12px"></p>
+      <p id="login-error" style="color:var(--danger);font-size:13px;text-align:center;margin-top:12px;display:none;background:var(--danger);border:1px solid var(--danger);border-radius:8px;padding:8px 12px;color:#fff"></p>
     </div>
   </div>
 </div>
@@ -343,14 +354,14 @@ function showLoginErr(msg) {
   err.style.display = 'block';
   const emailEl = document.getElementById('login-email');
   const passEl  = document.getElementById('login-pass');
-  [emailEl, passEl].forEach(el => { el.style.borderColor = '#EF4444'; });
+  [emailEl, passEl].forEach(el => { el.style.borderColor = 'var(--danger)'; });
 }
 function clearLoginErr() {
   const err = document.getElementById('login-error');
   err.style.display = 'none';
   const emailEl = document.getElementById('login-email');
   const passEl  = document.getElementById('login-pass');
-  [emailEl, passEl].forEach(el => { el.style.borderColor = '#E2E8F0'; });
+  [emailEl, passEl].forEach(el => { el.style.borderColor = 'var(--border)'; });
 }
 function togglePassVis() {
   const inp = document.getElementById('login-pass');
@@ -516,20 +527,20 @@ function renderDash(body) {
 
   body.innerHTML = `
   <div class="kpi-grid" style="grid-template-columns:repeat(7,1fr)">
-    ${kpi(total, 'Total líneas', '#60A5FA')}
-    ${kpi(activos, 'Activos', '#22C55E')}
-    ${kpi(conSenalHoy, 'Con señal hoy', '#22C55E')}
-    ${kpi(sinSenal, 'Sin señal hoy', sinSenal > 0 ? '#EF4444' : null)}
-    ${kpi(enRep, 'En reparación', enRep > 0 ? '#F59E0B' : null)}
-    <div class="kpi-card" style="cursor:pointer;border:${pendRevision>0?'1px solid #FDE68A':''}" onclick="navigate('inventario');S.invMode='sindisp';render()">
-      <div class="kpi-val" style="${pendRevision>0?'color:#D97706':''}">${pendRevision}</div>
+    ${kpi(total, 'Total líneas', 'var(--info)')}
+    ${kpi(activos, 'Activos', 'var(--success)')}
+    ${kpi(conSenalHoy, 'Con señal hoy', 'var(--success)')}
+    ${kpi(sinSenal, 'Sin señal hoy', sinSenal > 0 ? 'var(--danger)' : null)}
+    ${kpi(enRep, 'En reparación', enRep > 0 ? 'var(--warning)' : null)}
+    <div class="kpi-card" style="cursor:pointer;border:${pendRevision>0?'1px solid var(--warning)':''}" onclick="navigate('inventario');S.invMode='sindisp';render()">
+      <div class="kpi-val" style="${pendRevision>0?'color:var(--warning)':''}">${pendRevision}</div>
       <div class="kpi-lbl">Revisión pendiente</div>
-      ${pendRevision>0?'<div style="font-size:10px;color:#D97706;margin-top:4px">Sin dispositivo →</div>':''}
+      ${pendRevision>0?'<div style="font-size:10px;color:var(--warning);margin-top:4px">Sin dispositivo →</div>':''}
     </div>
-    <div class="kpi-card" style="cursor:pointer;border:${incompletos>0?'1px solid #FCA5A5':''}" onclick="navigate('inventario');S.invMode='incompletos';render()">
-      <div class="kpi-val" style="${incompletos>0?'color:#EF4444':''}">${incompletos}</div>
+    <div class="kpi-card" style="cursor:pointer;border:${incompletos>0?'1px solid var(--danger)':''}" onclick="navigate('inventario');S.invMode='incompletos';render()">
+      <div class="kpi-val" style="${incompletos>0?'color:var(--danger)':''}">${incompletos}</div>
       <div class="kpi-lbl">Datos incompletos</div>
-      ${incompletos>0?'<div style="font-size:10px;color:#EF4444;margin-top:4px">Ver detalle →</div>':''}
+      ${incompletos>0?'<div style="font-size:10px;color:var(--danger);margin-top:4px">Ver detalle →</div>':''}
     </div>
   </div>
 
@@ -639,10 +650,10 @@ function renderInv(body) {
   body.innerHTML = `
   <div style="display:flex;gap:8px;margin-bottom:16px">
     <button class="tab ${S.invMode==='todos'?'active':''}" onclick="setInvMode('todos')">Todos (${S.devices.length})</button>
-    <button class="tab ${S.invMode==='sindisp'?'active':''}" onclick="setInvMode('sindisp')" style="${sinDisp.length>0?'color:#D97706':''}">
+    <button class="tab ${S.invMode==='sindisp'?'active':''}" onclick="setInvMode('sindisp')" style="${sinDisp.length>0?'color:var(--warning)':''}">
       📵 Sin dispositivo (${sinDisp.length})
     </button>
-    <button class="tab ${S.invMode==='incompletos'?'active':''}" onclick="setInvMode('incompletos')" style="${incompletos.length>0?'color:#EF4444':''}">
+    <button class="tab ${S.invMode==='incompletos'?'active':''}" onclick="setInvMode('incompletos')" style="${incompletos.length>0?'color:var(--danger)':''}">
       ⚠ Datos incompletos (${incompletos.length})
     </button>
   </div>
@@ -764,16 +775,16 @@ function renderMapa(body) {
   <div class="card" style="padding:16px">
     <div style="display:flex;gap:16px;margin-bottom:12px;flex-wrap:wrap">
       <span style="font-size:12px;color:var(--muted);display:flex;align-items:center;gap:6px">
-        <span style="display:inline-block;width:12px;height:12px;border-radius:50%;background:#22C55E"></span> GPS real (señal hoy)
+        <span style="display:inline-block;width:12px;height:12px;border-radius:50%;background:var(--success)"></span> GPS real (señal hoy)
       </span>
       <span style="font-size:12px;color:var(--muted);display:flex;align-items:center;gap:6px">
         <span style="display:inline-block;width:12px;height:12px;border-radius:50%;background:#F97316"></span> Ubicación por IP (aprox.)
       </span>
       <span style="font-size:12px;color:var(--muted);display:flex;align-items:center;gap:6px">
-        <span style="display:inline-block;width:12px;height:12px;border-radius:50%;background:#4F46E5"></span> Ciudad asignada (sin señal)
+        <span style="display:inline-block;width:12px;height:12px;border-radius:50%;background:var(--primary)"></span> Ciudad asignada (sin señal)
       </span>
       <span style="font-size:12px;color:var(--muted);display:flex;align-items:center;gap:6px">
-        <span style="display:inline-block;width:12px;height:12px;border-radius:50%;background:#EF4444"></span> Sin señal
+        <span style="display:inline-block;width:12px;height:12px;border-radius:50%;background:var(--danger)"></span> Sin señal
       </span>
     </div>
     <div id="leaflet-map"></div>
@@ -800,7 +811,7 @@ function renderMapa(body) {
         <span style="font-size:11px;color:#666">${isIp ? '🌐 Ubicación aproximada por IP' : `📍 ${h.lat.toFixed(4)}, ${h.lng.toFixed(4)}`}</span>`;
       L.circleMarker([h.lat, h.lng], {
         radius: 9,
-        fillColor: isIp ? '#F97316' : '#22C55E',
+        fillColor: isIp ? '#F97316' : 'var(--success)',
         color:     isIp ? '#EA6C00' : '#16A34A',
         weight:2, opacity:1, fillOpacity:.85,
         dashArray: isIp ? '4 3' : null
@@ -828,7 +839,7 @@ function renderMapa(body) {
         const h = S.heartbeats[d.id];
         return !h || (now2 - new Date(h.created_at)) > 259200000; // +3 días
       }).length;
-      const color = sinSenal === devs.length ? '#EF4444' : '#4F46E5';
+      const color = sinSenal === devs.length ? 'var(--danger)' : 'var(--primary)';
       const borderColor = sinSenal === devs.length ? '#DC2626' : '#4338CA';
       const html = `<b>${ciudad}</b><br>${devs.length} dispositivo(s)<br><hr style="margin:4px 0">` +
         devs.slice(0,8).map(d => {
@@ -895,10 +906,10 @@ function drwDetail(d) {
     ? fields.filter(([l]) => !['IMEI','Modelo','Fecha de entrega'].includes(l))
     : fields;
   return `
-  ${d.sin_dispositivo ? `<div style="background:#FEF3C7;border:1px solid #FDE68A;border-radius:8px;padding:10px 14px;margin-bottom:12px;font-size:12px;color:#92400E">
+  ${d.sin_dispositivo ? `<div style="background:var(--warning);border:1px solid var(--warning);border-radius:8px;padding:10px 14px;margin-bottom:12px;font-size:12px;color:#92400E">
     📵 <strong>Línea sin dispositivo físico</strong> — el responsable usa celular personal.<br>
-    Última revisión: ${d.ultima_revision ? fmtDate(d.ultima_revision) : '<span style="color:#DC2626">Nunca revisada</span>'}
-    <button onclick="marcarRevisada('${d.id}')" style="margin-top:8px;width:100%;padding:7px;background:#F59E0B;color:#fff;border:none;border-radius:7px;font-size:12px;font-weight:600;cursor:pointer">
+    Última revisión: ${d.ultima_revision ? fmtDate(d.ultima_revision) : '<span style="color:var(--danger)">Nunca revisada</span>'}
+    <button onclick="marcarRevisada('${d.id}')" style="margin-top:8px;width:100%;padding:7px;background:var(--warning);color:#fff;border:none;border-radius:7px;font-size:12px;font-weight:600;cursor:pointer">
       ✓ Marcar como revisada este mes
     </button>
   </div>` : ''}
@@ -919,7 +930,7 @@ function drwDetail(d) {
       📄 Generar comodato
     </button>
     ${d.comodato_url ? `
-    <button onclick="viewComodato()" class="btn btn-secondary" style="justify-content:center;color:#16A34A;border-color:#86EFAC">
+    <button onclick="viewComodato()" class="btn btn-secondary" style="justify-content:center;color:var(--success);border-color:var(--success)">
       ✅ Ver comodato firmado
     </button>
     <label class="btn btn-secondary" style="justify-content:center;cursor:pointer;font-size:12px">
@@ -932,7 +943,7 @@ function drwDetail(d) {
   ${currentProfile?.rol === 'admin' ? `
   <hr class="divider">
   <button onclick="deleteDevice('${d.id}','${escHtml(d.numero_linea)}')"
-    class="btn" style="width:100%;justify-content:center;background:#FEE2E2;color:#DC2626;border:1px solid #FECACA;margin-top:4px">
+    class="btn" style="width:100%;justify-content:center;background:var(--danger);color:#fff;border:none;margin-top:4px">
     🗑 Eliminar dispositivo
   </button>` : ''}`;
 }
@@ -956,7 +967,7 @@ function drwEdit(d) {
       </select>
     </div>
     <div class="fg"><label class="fl">Carga de datos</label>
-      <input class="fi" id="edit-datos" readonly value="${d.carga_datos||''}" placeholder="Se completa al elegir plan" style="background:#F8FAFC;color:var(--muted)">
+      <input class="fi" id="edit-datos" readonly value="${d.carga_datos||''}" placeholder="Se completa al elegir plan" style="background:var(--bg);color:var(--muted)">
     </div>
     <div class="fg"><label class="fl">Marca</label>
       <select class="fs" id="edit-marca">
@@ -978,7 +989,7 @@ function drwEdit(d) {
       </select>
     </div>
     <div class="fg fg-full"><label class="fl">Comentarios</label><textarea class="ft" id="edit-coment">${escHtml(d.comentarios||'')}</textarea></div>
-    <div class="fg fg-full" style="display:flex;align-items:center;gap:10px;padding:10px;background:#F8FAFC;border-radius:8px;border:1px solid #E2E8F0">
+    <div class="fg fg-full" style="display:flex;align-items:center;gap:10px;padding:10px;background:var(--bg);border-radius:8px;border:1px solid var(--border)">
       <input type="checkbox" id="edit-sindisp" ${d.sin_dispositivo?'checked':''} style="width:16px;height:16px;cursor:pointer">
       <label for="edit-sindisp" style="font-size:13px;color:var(--text);cursor:pointer;font-weight:500">
         📵 Línea sin dispositivo físico (celular personal)
@@ -1060,11 +1071,11 @@ async function marcarRevisada(id) {
 // ── MODAL NUEVO ──────────────────────────────────────────────────────────────
 function openModal() {
   document.getElementById('modal-body').innerHTML = `
-    <div style="background:#EEF2FF;border-radius:8px;padding:10px 14px;margin-bottom:16px;display:flex;align-items:center;justify-content:space-between;gap:10px">
+    <div style="background:var(--primary-light);border-radius:8px;padding:10px 14px;margin-bottom:16px;display:flex;align-items:center;justify-content:space-between;gap:10px">
       <span style="font-size:12px;color:var(--primary)">💡 ¿Tenés varios equipos? Importá un CSV desde la página Inventario.</span>
       <button class="btn btn-secondary" onclick="downloadTemplate()" style="font-size:11px;padding:5px 10px;white-space:nowrap">⬇ Template CSV</button>
     </div>
-    <div style="background:#F8FAFC;border:1px solid #E2E8F0;border-radius:8px;padding:10px 14px;margin-bottom:12px;display:flex;align-items:center;gap:10px">
+    <div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:10px 14px;margin-bottom:12px;display:flex;align-items:center;gap:10px">
       <input type="checkbox" id="nl-sindisp" style="width:16px;height:16px;cursor:pointer">
       <label for="nl-sindisp" style="font-size:13px;color:var(--text);cursor:pointer;font-weight:500">
         📵 Línea sin dispositivo físico (celular personal del responsable)
@@ -1087,7 +1098,7 @@ function openModal() {
         </select>
       </div>
       <div class="fg"><label class="fl">Carga de datos</label>
-        <input class="fi" id="nl-datos" readonly placeholder="Se completa al elegir plan" style="background:#F8FAFC;color:var(--muted)">
+        <input class="fi" id="nl-datos" readonly placeholder="Se completa al elegir plan" style="background:var(--bg);color:var(--muted)">
       </div>
       ${fg('Costo de línea ($)','fi','nl-costo','','0', 'number')}
       ${fg('Responsable *','fi','nl-resp','')}
@@ -1226,10 +1237,10 @@ function renderSenales(body) {
 
   body.innerHTML = `
   <div class="kpi-grid" style="grid-template-columns:repeat(4,1fr)">
-    ${kpi(activos.length, 'Total activos', '#60A5FA')}
-    ${kpi(conSenal,  'Con señal hoy',  '#22C55E')}
-    ${kpi(sinSenal1, 'Sin señal 1-3d', sinSenal1 > 0 ? '#F59E0B' : null)}
-    ${kpi(sinSenal3, 'Sin señal +3d',  sinSenal3 > 0 ? '#EF4444' : null)}
+    ${kpi(activos.length, 'Total activos', 'var(--info)')}
+    ${kpi(conSenal,  'Con señal hoy',  'var(--success)')}
+    ${kpi(sinSenal1, 'Sin señal 1-3d', sinSenal1 > 0 ? 'var(--warning)' : null)}
+    ${kpi(sinSenal3, 'Sin señal +3d',  sinSenal3 > 0 ? 'var(--danger)' : null)}
   </div>
 
   <div class="tbl-wrap">
@@ -1447,14 +1458,14 @@ async function renderUsuarios(body) {
             <td class="text-muted">${p.email || '—'}</td>
             <td>
               <select onchange="updateRol('${p.id}', this.value)"
-                style="border:1px solid var(--border);border-radius:6px;padding:4px 8px;font-size:12px;background:var(--bg)">
+                style="border:1px solid var(--border);border-radius:6px;padding:4px 8px;font-size:12px;background:var(--bg);color:var(--text)">
                 <option value="viewer" ${p.rol==='viewer'?'selected':''}>Viewer</option>
                 <option value="admin"  ${p.rol==='admin' ?'selected':''}>Admin</option>
               </select>
             </td>
             <td>${p.rol === 'admin' ? '<span class="badge bg-green">Sí ✉️</span>' : '<span class="badge bg-gray">No</span>'}</td>
             <td style="display:flex;gap:4px;align-items:center">
-              <button onclick="editUser('${p.id}','${escHtml(p.nombre||'')}','${p.email||''}','${p.rol||'viewer'}')" style="background:none;border:none;cursor:pointer;color:var(--primary);font-size:15px;padding:2px 6px;border-radius:4px" title="Editar usuario">✏️</button>
+              <button onclick="openEditUserModal('${p.id}','${escHtml(p.email||'')}','${p.rol||'viewer'}')" style="background:none;border:none;cursor:pointer;color:var(--primary);font-size:15px;padding:2px 6px;border-radius:4px" title="Editar usuario">✏️</button>
               <button onclick="deleteUser('${p.id}','${escHtml(p.nombre||p.email)}')" style="background:none;border:none;cursor:pointer;color:var(--muted);font-size:15px;padding:2px 6px;border-radius:4px" title="Eliminar usuario">🗑</button>
             </td>
           </tr>`).join('') || '<tr><td colspan="5" class="no-data">Sin usuarios</td></tr>'}
@@ -1468,7 +1479,7 @@ async function renderUsuarios(body) {
       <input id="inv-nombre" placeholder="Nombre completo" style="padding:9px 12px;border:1px solid var(--border);border-radius:8px;font-size:13px;flex:1;min-width:160px"/>
       <input id="inv-email" type="email" placeholder="Email" style="padding:9px 12px;border:1px solid var(--border);border-radius:8px;font-size:13px;flex:1;min-width:200px"/>
       <input id="inv-pass" type="text" placeholder="Contraseña temporal (mín 6 car.)" style="padding:9px 12px;border:1px solid var(--border);border-radius:8px;font-size:13px;width:220px"/>
-      <select id="inv-rol" style="padding:9px 12px;border:1px solid var(--border);border-radius:8px;font-size:13px;background:#fff">
+      <select id="inv-rol" style="padding:9px 12px;border:1px solid var(--border);border-radius:8px;font-size:13px;background:var(--bg);color:var(--text)">
         <option value="viewer">Viewer</option>
         <option value="admin">Admin — recibe alertas</option>
       </select>
@@ -1500,7 +1511,7 @@ async function inviteUser() {
   if (error) {
     // Si el usuario ya existe en Auth, intentamos recuperar su ID y crear/actualizar el perfil
     if (error.message?.toLowerCase().includes('already been registered') || error.status === 422) {
-      if(msg) msg.innerHTML = '<span style="color:#D97706">⚠ El email ya existe en el sistema. Intentando sincronizar perfil...</span>';
+      if(msg) msg.innerHTML = '<span style="color:var(--warning)">⚠ El email ya existe en el sistema. Intentando sincronizar perfil...</span>';
       await syncSingleUser(email, nombre, rol, msg);
       return;
     }
@@ -1524,7 +1535,7 @@ async function inviteUser() {
     return;
   }
 
-  if(msg) msg.innerHTML = `<span style="color:#16A34A">✅ Usuario <strong>${escHtml(nombre)}</strong> creado. Puede ingresar con:<br><strong>${escHtml(email)}</strong> / <code>${escHtml(pass)}</code></span>`;
+  if(msg) msg.innerHTML = `<span style="color:var(--success)">✅ Usuario <strong>${escHtml(nombre)}</strong> creado. Puede ingresar con:<br><strong>${escHtml(email)}</strong> / <code>${escHtml(pass)}</code></span>`;
   toast(`Usuario ${nombre} agregado ✅`, 'success');
 
   // Limpiar campos
