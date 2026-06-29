@@ -2764,12 +2764,12 @@ async function darDeBajaPersona(id) {
   const disp = S.devices.find(d => d.dni_responsable === p.dni);
   const tienePechera = p.tiene_pechera;
   
-  let msg = \`¿Estás seguro de dar de baja a \${p.nombre_completo}?\`;
+  let msg = `¿Estás seguro de dar de baja a ${p.nombre_completo}?`;
   if (disp || tienePechera) {
-    msg += '\\n\\nATENCIÓN: Esta persona tiene activos asignados:\\n';
-    if (disp) msg += \`- Celular Línea: \${formatLinea(disp)}\\n\`;
-    if (tienePechera) msg += '- Pechera\\n';
-    msg += '\\nSi confirmas, el celular será desasignado (volverá a stock) y la pechera se marcará como devuelta.';
+    msg += '\n\nATENCIÓN: Esta persona tiene activos asignados:\n';
+    if (disp) msg += `- Celular Línea: ${formatLinea(disp)}\n`;
+    if (tienePechera) msg += '- Pechera\n';
+    msg += '\nSi confirmas, el celular será desasignado (volverá a stock) y la pechera se marcará como devuelta.';
   }
   
   if (!confirm(msg)) return;
