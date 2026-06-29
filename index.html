@@ -2272,9 +2272,21 @@ function downloadTemplate() {
   const refs    = ['REQUERIDO','','SAMSUNG|LG|MOTOROLA|APPLE|XIAOMI','ej: Galaxy A10','CC10R|CC11R|CC12R|CC13C','2GB|4GB|7GB|10GB (auto con plan)','','','YYYY-MM-DD (ej: 2026-01-15)','ADM|HR|DD|DATOS|SELECCION|DIRECCION','CABA|GBA|BUENOS AIRES|CENTRO|CUYO|LITORAL|NEA|NOA|PATAGONIA|OPERACIONES','ej: MENDOZA','activo|stock|en_reparacion|baja',''];
   const ejemplo = ['2612052273','352031112409031','SAMSUNG','Galaxy A10','CC10R','2GB','JUAN PEREZ','12345678','2026-01-15','DD','CUYO','MENDOZA','activo',''];
   const csv = [cols.join(','), refs.join(','), ejemplo.join(',')].join('\n');
-  const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' });
+  const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8' });
   const a = Object.assign(document.createElement('a'), {
     href: URL.createObjectURL(blob), download: 'template_celulares_proa.csv'
+  });
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+}
+
+function downloadNominaTemplate() {
+  const cols    = ['dni','nombre_completo','region','ciudad','osc','tiene_pechera','estado'];
+  const refs    = ['REQUERIDO','REQUERIDO','CABA|CENTRO|CUYO|LITORAL|NOA|OPERACIONES','ej: CORDOBA','UNICEF|Amnistia|TECHO|...','SI|NO','activo|baja'];
+  const ejemplo = ['12345678','JUAN PEREZ','CENTRO','CORDOBA','UNICEF','SI','activo'];
+  const csv = [cols.join(','), refs.join(','), ejemplo.join(',')].join('\n');
+  const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8' });
+  const a = Object.assign(document.createElement('a'), {
+    href: URL.createObjectURL(blob), download: 'template_nomina_proa.csv'
   });
   document.body.appendChild(a); a.click(); document.body.removeChild(a);
 }
@@ -2352,7 +2364,56 @@ async function importCSV(input) {
   }
 
   const msg = [creados && `${creados} creados`, actualizados && `${actualizados} actualizados`, err && `${err} errores`].filter(Boolean).join(', ');
-  toast(msg, err > 0 && creados + actualizados === 0 ? 'error' : 'success');
+  toast(msg || 'Sin cambios.', err > 0 && creados + actualizados === 0 ? 'error' : 'success');
+  input.value = '';
+  await reloadData();
+  render();
+}
+
+async function importNominaCSV(input) {
+  const file = input.files[0]; if (!file) return;
+  const text = await file.text();
+  const lines = text.trim().split('\n').map(l => l.replace(/\r/g, ''));
+  if (lines.length < 2) { toast('El CSV no tiene datos', 'error'); return; }
+  const headers = lines[0].split(',').map(h => h.trim().replace(/"/g, '').toLowerCase());
+  const rows = lines.slice(1)
+    .map(line => {
+      const vals = line.split(',').map(v => v.trim().replace(/^"|"$/g, '') || null);
+      const obj = {};
+      headers.forEach((h, i) => obj[h] = vals[i] ?? null);
+      return obj;
+    })
+    .filter(r => r.dni && r.nombre_completo);
+  if (!rows.length) { toast('Sin filas válidas (¿falta dni o nombre_completo?)', 'error'); return; }
+  toast(`Procesando ${rows.length} personas en nómina…`, 'info');
+  let creados = 0, actualizados = 0, err = 0;
+
+  for (const row of rows) {
+    const { data: existing } = await sb.from('nomina').select('id').eq('dni', row.dni).maybeSingle();
+    const tiene_pechera = (row.tiene_pechera||'').toUpperCase() === 'SI' || (row.tiene_pechera||'').toUpperCase() === 'TRUE';
+    const estado = row.estado?.toLowerCase() === 'baja' ? 'baja' : 'activo';
+
+    const obj = {
+      dni: row.dni,
+      nombre_completo: row.nombre_completo,
+      region: row.region || null,
+      ciudad: row.ciudad || null,
+      osc: row.osc || null,
+      tiene_pechera,
+      estado
+    };
+
+    if (existing) {
+      const { error } = await sb.from('nomina').update(obj).eq('id', existing.id);
+      if (error) err++; else actualizados++;
+    } else {
+      const { error } = await sb.from('nomina').insert(obj);
+      if (error) err++; else creados++;
+    }
+  }
+
+  const msg = [creados && `${creados} creados`, actualizados && `${actualizados} actualizados`, err && `${err} errores`].filter(Boolean).join(', ');
+  toast(msg || 'Sin cambios.', err > 0 && creados + actualizados === 0 ? 'error' : 'success');
   input.value = '';
   await reloadData();
   render();
@@ -2361,25 +2422,44 @@ async function importCSV(input) {
 // ── CARGA MASIVA ─────────────────────────────────────────────────────────────
 function renderCargaMasiva(body) {
   body.innerHTML = `
-    <div class="card" style="max-width: 600px; margin: 0 auto; padding: 30px; text-align: center; margin-top: 20px;">
-      <div style="font-size:40px; margin-bottom: 10px;">📊</div>
-      <h2 style="margin-bottom: 10px;">Carga Masiva de Líneas</h2>
-      <p style="color:var(--muted); font-size: 13px; margin-bottom: 20px;">
-        Subí el archivo <b>.csv</b> (template del sistema descargado desde Inventario) para actualizar o agregar dispositivos automáticamente.
-      </p>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(300px, 1fr));gap:20px;max-width:900px;margin:0 auto;margin-top:20px;">
       
-      <div style="border: 2px dashed var(--border); padding: 30px; border-radius: 12px; cursor: pointer; transition: all 0.2s;" id="drop-zone" onclick="document.getElementById('excel-input').click()">
-        <div style="color: var(--primary); font-weight: 600; font-size: 15px;">Haz clic o arrastra el archivo aquí</div>
-        <div style="font-size: 12px; color: var(--muted); margin-top: 5px;">Formato soportado: .csv</div>
-      </div>
-      <input type="file" id="excel-input" accept=".csv" style="display:none" onchange="handleCargaMasivaUpload(this)">
-      
-      <div id="excel-log" style="margin-top: 20px; font-size: 12px; color: var(--text); text-align: left; background: var(--bg); padding: 15px; border-radius: 8px; display: none; max-height: 200px; overflow-y: auto;">
+      <!-- LÍNEAS / DISPOSITIVOS -->
+      <div class="card" style="padding: 30px; text-align: center;">
+        <div style="font-size:40px; margin-bottom: 10px;">📱</div>
+        <h2 style="margin-bottom: 10px;">Inventario</h2>
+        <p style="color:var(--muted); font-size: 13px; margin-bottom: 20px;">
+          Subí el <b>.csv</b> para actualizar o agregar dispositivos (celulares).
+        </p>
+        
+        <div style="border: 2px dashed var(--border); padding: 30px; border-radius: 12px; cursor: pointer; transition: all 0.2s;" onclick="document.getElementById('excel-input').click()">
+          <div style="color: var(--primary); font-weight: 600; font-size: 15px;">Arrastra o elige el CSV</div>
+        </div>
+        <input type="file" id="excel-input" accept=".csv" style="display:none" onchange="importCSV(this)">
+        
+        <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid var(--border);">
+          <button class="btn btn-secondary" onclick="downloadTemplate()" style="font-size:12px;">⬇ Template Inventario (.csv)</button>
+        </div>
       </div>
 
-      <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid var(--border);">
-        <button class="btn btn-secondary" onclick="downloadTemplate()" style="font-size:12px;">⬇ Descargar Template CSV</button>
+      <!-- NÓMINA -->
+      <div class="card" style="padding: 30px; text-align: center;">
+        <div style="font-size:40px; margin-bottom: 10px;">📋</div>
+        <h2 style="margin-bottom: 10px;">Nómina de Personal</h2>
+        <p style="color:var(--muted); font-size: 13px; margin-bottom: 20px;">
+          Subí el <b>.csv</b> para cargar las personas (con DNI, región, OSC y pechera).
+        </p>
+        
+        <div style="border: 2px dashed var(--border); padding: 30px; border-radius: 12px; cursor: pointer; transition: all 0.2s;" onclick="document.getElementById('nomina-input').click()">
+          <div style="color: var(--primary); font-weight: 600; font-size: 15px;">Arrastra o elige el CSV</div>
+        </div>
+        <input type="file" id="nomina-input" accept=".csv" style="display:none" onchange="importNominaCSV(this)">
+        
+        <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid var(--border);">
+          <button class="btn btn-secondary" onclick="downloadNominaTemplate()" style="font-size:12px;">⬇ Template Nómina (.csv)</button>
+        </div>
       </div>
+
     </div>
   `;
 }
