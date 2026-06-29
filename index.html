@@ -341,9 +341,13 @@ async function checkAuth() {
 }
 
 async function loadProfile() {
-  const { data } = await sb.from('profiles').select('*').eq('id', currentUser.id).single();
+  const { data, error } = await sbAdmin.from('profiles').select('*').eq('id', currentUser.id).single();
   currentProfile = data;
-  document.getElementById('sb-user-name').textContent = data?.nombre || '';
+  if (error) {
+    document.getElementById('sb-user-name').textContent = 'Error: ' + error.message;
+  } else {
+    document.getElementById('sb-user-name').textContent = data?.nombre || 'Sin nombre';
+  }
   document.getElementById('sb-user-email').textContent = currentUser.email;
   if (data?.rol === 'admin') document.getElementById('nav-usuarios').style.display = 'flex';
 }
