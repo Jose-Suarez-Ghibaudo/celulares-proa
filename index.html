@@ -345,7 +345,7 @@ async function loadProfile() {
   currentProfile = data;
   document.getElementById('sb-user-name').textContent = data?.nombre || '';
   document.getElementById('sb-user-email').textContent = currentUser.email;
-  if (data?.rol === 'admin') document.getElementById('nav-usuarios').style.display = '';
+  if (data?.rol === 'admin') document.getElementById('nav-usuarios').style.display = 'flex';
 }
 
 function showLoginErr(msg) {
