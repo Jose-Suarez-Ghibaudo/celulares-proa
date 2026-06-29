@@ -208,6 +208,7 @@ tbody tr:hover td{background:var(--th-bg);cursor:pointer}
     <div class="nav-item" data-page="facturacion" onclick="navigate('facturacion')"><span class="ic">💰</span>Facturación</div>
     <div class="nav-item" data-page="cargamasiva" onclick="navigate('cargamasiva')"><span class="ic">📤</span>Carga Masiva</div>
     <div class="nav-item" data-page="pecheras" onclick="navigate('pecheras')"><span class="ic">🦺</span>Pecheras</div>
+    <div class="nav-item" data-page="nomina" onclick="navigate('nomina')"><span class="ic">📋</span>Nómina</div>
     <div class="nav-item" data-page="usuarios" id="nav-usuarios" style="display:none" onclick="navigate('usuarios')"><span class="ic">👥</span>Usuarios</div>
   </div>
   <div class="sb-footer" style="display:flex;flex-direction:column;gap:6px">
@@ -437,12 +438,13 @@ const OSC_LIST = ['UNICEF', 'Amnistia', 'TECHO', 'Banco de Alimentos Cordoba', '
 
 // ── Load ─────────────────────────────────────────────────────────────────────
 async function loadAll() {
-  const [dr, mr, cr, hr, pr] = await Promise.all([
+  const [dr, mr, cr, hr, pr, nr] = await Promise.all([
     sb.from('devices').select('*').order('region').order('numero_linea'),
     sb.from('movements').select('*').order('created_at', { ascending: false }).limit(300),
     sb.from('city_coords').select('*'),
     sb.from('heartbeats').select('device_id,lat,lng,battery,created_at').order('created_at', { ascending: false }).limit(500),
-    sb.from('pecheras_stock').select('*').order('region').order('ciudad').order('osc')
+    sb.from('pecheras_stock').select('*').order('region').order('ciudad').order('osc'),
+    sb.from('nomina').select('*').order('nombre_completo')
   ]);
   S.devices   = dr.data || [];
   S.movements = mr.data || [];
@@ -451,20 +453,23 @@ async function loadAll() {
   S.heartbeats = {};
   (hr.data || []).forEach(h => { if (!S.heartbeats[h.device_id]) S.heartbeats[h.device_id] = h; });
   S.pecheras = pr?.data || [];
+  S.nomina = nr?.data || [];
   S.loading = false;
   render();
   renderNotifPanel();
 }
 
 async function reloadData() {
-  const [dr, mr, pr] = await Promise.all([
+  const [dr, mr, pr, nr] = await Promise.all([
     sb.from('devices').select('*').order('region').order('numero_linea'),
     sb.from('movements').select('*').order('created_at', { ascending: false }).limit(300),
-    sb.from('pecheras_stock').select('*').order('region').order('ciudad').order('osc')
+    sb.from('pecheras_stock').select('*').order('region').order('ciudad').order('osc'),
+    sb.from('nomina').select('*').order('nombre_completo')
   ]);
   S.devices   = dr.data || [];
   S.movements = mr.data || [];
   S.pecheras  = pr?.data || [];
+  S.nomina    = nr?.data || [];
 }
 
 // ── Navigate ─────────────────────────────────────────────────────────────────
@@ -487,6 +492,7 @@ const PAGE_META = {
   facturacion:['Facturación', 'Análisis de gasto por línea. Subí la factura de Claro para detectar excedentes.'],
   cargamasiva:['Carga Masiva', 'Sincronizar y actualizar base de datos subiendo el archivo CSV (template del sistema).'],
   pecheras:   ['Pecheras',    'Control de stock de ropa de trabajo y cantidad de personas por OSC.'],
+  nomina:     ['Nómina',      'Gestión de personal y activos asignados.'],
   usuarios:   ['Usuarios',    'Gestión de accesos y roles.'],
 };
 
@@ -499,7 +505,7 @@ function render() {
   ({ dashboard: renderDash, inventario: renderInv, sinasignar: renderSinAsignar,
      movimientos: renderMovimientos, mapa: renderMapa, senales: renderSenales,
      facturacion: renderFacturacion, cargamasiva: renderCargaMasiva,
-     usuarios: renderUsuarios, pecheras: renderPecheras })[S.page]?.(body);
+     usuarios: renderUsuarios, pecheras: renderPecheras, nomina: renderNomina })[S.page]?.(body);
 }
 
 function formatLinea(x) {
@@ -2554,6 +2560,174 @@ async function deletePechera(id) {
 
 // ── Init ─────────────────────────────────────────────────────────────────────
 checkAuth();
+// ── NÓMINA Y ACTIVOS ───────────────────────────────────────────────────────
+function renderNomina(body) {
+  const n = S.nomina || [];
+  
+  body.innerHTML = `
+    <div style="display:flex;justify-content:space-between;margin-bottom:16px">
+      <div style="font-size:14px;color:var(--muted)">Gestión de personal y activos asignados.</div>
+      <button class="btn btn-primary" onclick="openNominaModal()">+ Nueva Persona</button>
+    </div>
+    
+    <div class="card" style="padding:0">
+      <table style="width:100%;border-collapse:collapse">
+        <thead>
+          <tr style="background:var(--th-bg)">
+            <th style="padding:10px 14px;text-align:left;border-bottom:1px solid var(--border)">DNI</th>
+            <th style="padding:10px 14px;text-align:left;border-bottom:1px solid var(--border)">Nombre</th>
+            <th style="padding:10px 14px;text-align:left;border-bottom:1px solid var(--border)">Ubicación</th>
+            <th style="padding:10px 14px;text-align:center;border-bottom:1px solid var(--border)">Activos</th>
+            <th style="padding:10px 14px;text-align:center;border-bottom:1px solid var(--border)">Estado</th>
+            <th style="padding:10px 14px;text-align:right;border-bottom:1px solid var(--border)">Acciones</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${n.length === 0 ? '<tr><td colspan="6" class="no-data">Sin registros en nómina</td></tr>' :
+            n.map(x => {
+              const acts = [];
+              const disp = S.devices.find(d => d.dni_responsable === x.dni);
+              if (disp) acts.push('📱 Celular');
+              if (x.tiene_pechera) acts.push('🦺 Pechera');
+              const actStr = acts.length > 0 ? acts.join(' + ') : '<span style="color:var(--muted)">Ninguno</span>';
+              const stateBadge = x.estado === 'activo' 
+                ? '<span class="badge badge-success">Activo</span>'
+                : '<span class="badge badge-danger">Baja</span>';
+              
+              return `
+              <tr>
+                <td>${x.dni}</td>
+                <td style="font-weight:500">${x.nombre_completo}</td>
+                <td><span style="font-size:12px;color:var(--muted)">${x.ciudad} (${x.osc})</span></td>
+                <td style="text-align:center">${actStr}</td>
+                <td style="text-align:center">${stateBadge}</td>
+                <td style="text-align:right">
+                  <button class="btn btn-secondary" style="padding:4px 8px;font-size:12px" onclick="openNominaModal('${x.id}')">✏️ Editar</button>
+                  ${x.estado === 'activo' ? `<button class="btn btn-danger" style="padding:4px 8px;font-size:12px" onclick="darDeBajaPersona('${x.id}')">Dar de Baja</button>` : ''}
+                </td>
+              </tr>`;
+            }).join('')
+          }
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+function openNominaModal(id = null) {
+  const n = id ? S.nomina.find(x => x.id === id) : null;
+  const regionsOpts = REGIONES.map(r => `<option value="${r}" ${r===n?.region?'selected':''}>${r}</option>`).join('');
+  const oscOpts = [...OSC_LIST, 'Otra'].map(o => `<option value="${o}" ${o===n?.osc?'selected':''}>${o}</option>`).join('');
+
+  document.body.insertAdjacentHTML('beforeend', `
+    <div class="modal" id="modal-nomina">
+      <div class="modal-content">
+        <h2>${id ? 'Editar Persona' : 'Nueva Persona en Nómina'}</h2>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
+          ${fg('DNI *','fi','nom-dni', n?.dni||'', 'DNI exacto')}
+          ${fg('Nombre Completo *','fi','nom-nombre', n?.nombre_completo||'')}
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
+          <div class="form-group"><label>Región *</label><select id="nom-region"><option value="">Seleccione...</option>${regionsOpts}</select></div>
+          ${fg('Ciudad *','fi','nom-ciudad', n?.ciudad||'')}
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
+          <div class="form-group"><label>OSC *</label><select id="nom-osc"><option value="">Seleccione...</option>${oscOpts}</select></div>
+          <div class="form-group" style="display:flex;align-items:center;gap:8px;padding-top:24px">
+            <input type="checkbox" id="nom-pechera" ${n?.tiene_pechera ? 'checked' : ''}>
+            <label for="nom-pechera" style="margin:0;cursor:pointer">¿Tiene Pechera asignada?</label>
+          </div>
+        </div>
+        <div class="modal-actions">
+          <button class="btn btn-secondary" onclick="document.getElementById('modal-nomina').remove()">Cancelar</button>
+          <button class="btn btn-primary" onclick="saveNomina('${id||''}')">Guardar</button>
+        </div>
+      </div>
+    </div>
+  `);
+}
+
+async function saveNomina(id) {
+  const obj = {
+    dni: v('nom-dni'),
+    nombre_completo: v('nom-nombre'),
+    region: v('nom-region'),
+    ciudad: v('nom-ciudad'),
+    osc: v('nom-osc'),
+    tiene_pechera: document.getElementById('nom-pechera').checked
+  };
+
+  if(!obj.dni || !obj.nombre_completo || !obj.region || !obj.ciudad || !obj.osc) {
+    return alert('Por favor, completa los campos requeridos (*).');
+  }
+
+  try {
+    document.getElementById('modal-nomina').remove();
+    let res;
+    if (id) {
+      res = await sb.from('nomina').update(obj).eq('id', id);
+    } else {
+      res = await sb.from('nomina').insert(obj);
+    }
+    if (res.error) throw res.error;
+    await reloadData();
+    render();
+  } catch (err) {
+    alert('Error al guardar: ' + err.message);
+  }
+}
+
+async function darDeBajaPersona(id) {
+  const p = S.nomina.find(x => x.id === id);
+  if (!p) return;
+  
+  const disp = S.devices.find(d => d.dni_responsable === p.dni);
+  const tienePechera = p.tiene_pechera;
+  
+  let msg = \`¿Estás seguro de dar de baja a \${p.nombre_completo}?\`;
+  if (disp || tienePechera) {
+    msg += '\\n\\nATENCIÓN: Esta persona tiene activos asignados:\\n';
+    if (disp) msg += \`- Celular Línea: \${formatLinea(disp)}\\n\`;
+    if (tienePechera) msg += '- Pechera\\n';
+    msg += '\\nSi confirmas, el celular será desasignado (volverá a stock) y la pechera se marcará como devuelta.';
+  }
+  
+  if (!confirm(msg)) return;
+  
+  try {
+    // 1. Desasignar dispositivo
+    if (disp) {
+      await sb.from('devices').update({
+        estado: 'stock',
+        responsable: null,
+        dni_responsable: null,
+        comodato_url: null,
+        fecha_entrega: null
+      }).eq('id', disp.id);
+      
+      // Registrar el movimiento de devolución
+      await sb.from('movements').insert({
+        device_id: disp.id,
+        user_id: currentUser.id,
+        type: 'estado',
+        notes: `Devolución automática por baja de nómina. Responsable anterior: ${p.nombre_completo}`
+      });
+    }
+    
+    // 2. Dar de baja en nómina y remover pechera
+    await sb.from('nomina').update({
+      estado: 'baja',
+      fecha_baja: new Date().toISOString(),
+      tiene_pechera: false
+    }).eq('id', id);
+    
+    await reloadData();
+    render();
+    alert('Baja procesada correctamente.');
+  } catch(err) {
+    alert('Error al procesar la baja: ' + err.message);
+  }
+}
 </script>
 </body>
 </html>
